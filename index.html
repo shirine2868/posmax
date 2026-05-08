@@ -75,7 +75,7 @@ function applyRemoteData(key, val) {
       categories:KEYS?.cats||'pm_c',memberTiers:KEYS?.memberTiers||'pm_mt',
       pointsSettings:KEYS?.pointsSettings||'pm_pts',payMethods:KEYS?.payMethods||'pm_pay'};
     switch(key) {
-      case 'products': products=val; setTimeout(()=>{renderInventory(); renderProducts(); renderDashboard();},50); break;
+      case 'products': products=val; renderAll(); break;
       case 'orders': orders=val; renderOrders(); renderDashboard(); break;
       case 'members': members=val; renderMembers(); break;
       case 'promos': promos=val; updateTotals(); break;
@@ -2284,7 +2284,12 @@ function dSavePO(status){
   save();dClosePOModal();
   renderPOs();renderInventory();renderDashboard();renderProducts();
 }
-function renderAll(){renderDashboard();renderProducts();renderInventory();renderPOs();renderOrders();renderSettings();renderMembers();renderPreorders();updatePreorderBadge();renderPayGrid();}
+let _renderAllTimer=null;
+function renderAll(){
+  clearTimeout(_renderAllTimer);
+  _renderAllTimer=setTimeout(_doRenderAll,200);
+}
+function _doRenderAll(){renderDashboard();renderProducts();_doRenderInventory();renderPOs();renderOrders();renderSettings();renderMembers();renderPreorders();updatePreorderBadge();renderPayGrid();}
 window.addEventListener('resize',()=>{const nd=window.innerWidth>=768;if(nd!==isDesktop)init();});
 
 // ============================================================
