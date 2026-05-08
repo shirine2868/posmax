@@ -3821,6 +3821,9 @@ function showReceipt(o){
 let _renderInvVersion=0;
 function renderInventory(){
   const v=++_renderInvVersion;
+  // 先立刻清空，防止舊內容殘留
+  const dInv=document.getElementById('d-inv-list');if(dInv)dInv.innerHTML='';
+  const mInv=document.getElementById('inv-list');if(mInv)mInv.innerHTML='';
   setTimeout(()=>{if(v===_renderInvVersion)_doRenderInventory();},150);
 }
 function _doRenderInventory(){
