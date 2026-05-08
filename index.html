@@ -75,7 +75,7 @@ function applyRemoteData(key, val) {
       categories:KEYS?.cats||'pm_c',memberTiers:KEYS?.memberTiers||'pm_mt',
       pointsSettings:KEYS?.pointsSettings||'pm_pts',payMethods:KEYS?.payMethods||'pm_pay'};
     switch(key) {
-      case 'products': products=val; renderInventory(); renderProducts(); renderDashboard(); break;
+      case 'products': products=val; setTimeout(()=>{renderInventory(); renderProducts(); renderDashboard();},50); break;
       case 'orders': orders=val; renderOrders(); renderDashboard(); break;
       case 'members': members=val; renderMembers(); break;
       case 'promos': promos=val; updateTotals(); break;
@@ -3863,10 +3863,10 @@ function _doRenderInventory(){
       ${skuHtml}
     </div>`;
   }).join('')||'<div style="text-align:center;color:var(--tx3);padding:26px;font-size:12px">查無商品</div>';
-  const dInv=document.getElementById('d-inv-list');if(dInv)dInv.innerHTML='';
-  const mInv=document.getElementById('inv-list');if(mInv)mInv.innerHTML='';
+  const dInv=document.getElementById('d-inv-list');if(dInv){dInv.innerHTML='';dInv.textContent='';}
+  const mInv=document.getElementById('inv-list');if(mInv){mInv.innerHTML='';mInv.textContent='';}
   const targetEl=document.getElementById(targetId);
-  if(targetEl)targetEl.innerHTML=html;
+  if(targetEl){targetEl.innerHTML='';targetEl.innerHTML=html;}
 }
 
 // 商品庫存查看（點選卡片觸發）
