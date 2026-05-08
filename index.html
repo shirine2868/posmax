@@ -3818,10 +3818,10 @@ function showReceipt(o){
 // ============================================================
 // INVENTORY
 // ============================================================
-let _renderInvTimer=null;
+let _renderInvVersion=0;
 function renderInventory(){
-  clearTimeout(_renderInvTimer);
-  _renderInvTimer=setTimeout(_doRenderInventory,0);
+  const v=++_renderInvVersion;
+  setTimeout(()=>{if(v===_renderInvVersion)_doRenderInventory();},150);
 }
 function _doRenderInventory(){
   const prefix=isDesktop?'d-':'';
