@@ -3971,6 +3971,7 @@ function openAddProduct(){
   renderColorPicker([]);renderSizePicker([]);
   openModal('modal-product');
 }
+function setField(id,val,prop='value'){['f-'+id,'d-f-'+id].forEach(i=>{const e=document.getElementById(i);if(e)e[prop]=val;});}
 function openEditProduct(id){
   id=Number(id);
   const p=products.find(x=>Number(x.id)===id);if(!p)return;
@@ -3991,22 +3992,23 @@ function openEditProduct(id){
   renderColorPicker(selC);renderSizePicker(selS);
   openModal('modal-product');
 }
+function getField(id){return document.getElementById('d-'+id)||document.getElementById(id);}
 function saveProduct(){
-  const name=document.getElementById('f-name').value.trim();
+  const name=getField('f-name').value.trim();
   if(!name){alert('請輸入商品名稱');return;}
-  const colors=document.getElementById('f-colors').value.trim();
-  const sizes=document.getElementById('f-sizes').value.trim();
+  const colors=getField('f-colors').value.trim();
+  const sizes=getField('f-sizes').value.trim();
   const cs=colors.split(',').map(s=>s.trim()).filter(Boolean);
   const ss=sizes.split(',').map(s=>s.trim()).filter(Boolean);
-  const barcode=((document.getElementById('d-f-barcode')||document.getElementById('f-barcode'))?.value||'').trim().toUpperCase();
-  const addOnPriceVal=document.getElementById('f-addon-price')?.value;
+  const barcode=((document.getElementById('d-f-barcode')||getField('f-barcode'))?.value||'').trim().toUpperCase();
+  const addOnPriceVal=getField('f-addon-price')?.value;
   const addOnPrice=addOnPriceVal&&addOnPriceVal!==''?parseInt(addOnPriceVal)||0:null;
-  const data={name,skuCode:document.getElementById('f-sku').value.trim().toUpperCase()||'',
+  const data={name,skuCode:getField('f-sku').value.trim().toUpperCase()||'',
     barcode, addOnPrice,
-    cat:document.getElementById('f-cat').value||categories[0]||'其他',
-    vendorId:parseInt(document.getElementById('f-vendor').value)||0,
-    price:parseInt(document.getElementById('f-price').value)||0,
-    cost:parseInt(document.getElementById('f-cost').value)||0,colors,sizes};
+    cat:getField('f-cat').value||categories[0]||'其他',
+    vendorId:parseInt(getField('f-vendor').value)||0,
+    price:parseInt(getField('f-price').value)||0,
+    cost:parseInt(getField('f-cost').value)||0,colors,sizes};
   if(editingProductId){
     const p=products.find(x=>x.id===editingProductId);
     const oldSkus=p.skus||[];
