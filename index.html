@@ -75,11 +75,7 @@ function applyRemoteData(key, val) {
       categories:KEYS?.cats||'pm_c',memberTiers:KEYS?.memberTiers||'pm_mt',
       pointsSettings:KEYS?.pointsSettings||'pm_pts',payMethods:KEYS?.payMethods||'pm_pay'};
     switch(key) {
-      case 'products':
-        products=val;
-        products.forEach(p=>{if(p.id!==undefined)p.id=Number(p.id);});
-        (function(){const seen=new Set();let mx=0;products.forEach(p=>{if(p.id>mx)mx=p.id;});products.forEach(p=>{if(seen.has(p.id)){mx++;p.id=mx;}seen.add(p.id);});if(mx>=nextId){nextId=mx+1;localStorage.setItem(KEYS.nextId,String(nextId));}})();
-        renderAll(); break;
+      case 'products': products=val; renderAll(); break;
       case 'orders': orders=val; renderOrders(); renderDashboard(); break;
       case 'members': members=val; renderMembers(); break;
       case 'promos': promos=val; updateTotals(); break;
@@ -1707,9 +1703,9 @@ html,body{height:100%;width:100%;overflow:hidden;font-family:'Noto Sans TC',sans
 // ============================================================
 // CONSTANTS & PRESETS
 // ============================================================
-const DEFAULT_COLORS=[];
-const DEFAULT_SIZES=[];
-const DEFAULT_PAY_METHODS=['現金'];
+const DEFAULT_COLORS=['黑色','白色','灰色','深藍','淺藍','藍色','紅色','酒紅','粉色','橘色','綠色','卡其','米白','咖啡','軍綠','紫色','原色','格紋','牛仔藍','條紋'];
+const DEFAULT_SIZES=['F','XS','S','M','L','XL','XXL','XXXL','24','25','26','27','28','29','30','31','32','34'];
+const DEFAULT_PAY_METHODS=['現金','轉帳','刷卡','Line Pay'];
 const KEYS={products:'pm_p',orders:'pm_o',nextId:'pm_nid',cats:'pm_c',promos:'pm_pr',nextPromoId:'pm_npid',coupons:'pm_cp',nextCouponSeq:'pm_ncs',orderSeq:'pm_os',vendors:'pm_v',payMethods:'pm_pay',presetColors:'pm_pc',presetSizes:'pm_ps',purchaseOrders:'pm_po',nextPoId:'pm_npoid',members:'pm_mbr',nextMemberSeq:'pm_nms',memberTiers:'pm_mt',pointsSettings:'pm_pts',expenses:'pm_exp'};
 
 // ============================================================
@@ -1754,21 +1750,13 @@ function load(){
   try{
     const g=(k,def)=>{const v=localStorage.getItem(k);return v?JSON.parse(v):def;};
     products=g(KEYS.products,null)||[];
-    // 修正重複 ID：確保每個商品 id 都是 number 且唯一
-    (function(){
-      products.forEach(p=>{if(p.id!==undefined)p.id=Number(p.id);});
-      const seen=new Set(); let maxId=0;
-      products.forEach(p=>{if(p.id>maxId)maxId=p.id;});
-      products.forEach(p=>{
-        if(seen.has(p.id)){maxId++;p.id=maxId;}
-        seen.add(p.id);
-      });
+    products.forEach(p=>{if(p.id!==undefined)p.id=Number(p.id);});
+    (function(){const seen=new Set();let mx=0;
+      products.forEach(p=>{if(p.id>mx)mx=p.id;});
+      products.forEach(p=>{if(seen.has(p.id)){mx++;p.id=mx;}seen.add(p.id);});
       const stored=parseInt(localStorage.getItem(KEYS.nextId)||'1');
-      nextId=Math.max(stored,maxId+1);
-      if(maxId>=stored){
-        localStorage.setItem(KEYS.nextId,String(nextId));
-        localStorage.setItem(KEYS.products,JSON.stringify(products));
-      }
+      nextId=Math.max(stored,mx+1);
+      if(mx>=stored){localStorage.setItem(KEYS.nextId,String(nextId));localStorage.setItem(KEYS.products,JSON.stringify(products));}
     })();
     orders=g(KEYS.orders,[]);
     nextId=Math.max(nextId,parseInt(localStorage.getItem(KEYS.nextId)||'1'));
@@ -1779,12 +1767,12 @@ function load(){
     nextCouponSeq=parseInt(localStorage.getItem(KEYS.nextCouponSeq)||'1');
     orderSeq=g(KEYS.orderSeq,{});
     vendors=g(KEYS.vendors,[]);
-    // 確保 vendor id 為 number 且 nextVendorId 大於所有現有 id
     vendors.forEach(v=>{if(v.id!==undefined)v.id=Number(v.id);});
-    if(vendors.length>0){
-      const maxVId=vendors.reduce((mx,v)=>Math.max(mx,v.id||0),0);
-      if(nextVendorId<=maxVId)nextVendorId=maxVId+1;
-    }
+    (function(){const seen=new Set();let mx=0;
+      vendors.forEach(v=>{if(v.id>mx)mx=v.id;});
+      vendors.forEach(v=>{if(seen.has(v.id)){mx++;v.id=mx;}seen.add(v.id);});
+      if(mx>=nextVendorId){nextVendorId=mx+1;}
+    })();
     payMethods=g(KEYS.payMethods,DEFAULT_PAY_METHODS);
     // 確保「轉帳」排在第二位（index 1）
     const tIdx=payMethods.indexOf('轉帳');
@@ -1838,21 +1826,34 @@ function getSkuStock(p,color,size){
 // ============================================================
 // DEFAULT DATA
 // ============================================================
-const DEFAULT_VENDORS=[];
-const DEFAULT_CATS=[];
-const DEFAULT_PROMOS=[];
-const DEFAULT_PRODUCTS=[];
+const DEFAULT_VENDORS=[{id:1,name:'台北成衣行',contact:'0912-345-678'},{id:2,name:'豐盛布料廠',contact:'04-2234-5678'}];
+const DEFAULT_CATS=[{name:'上衣',code:'10'},{name:'下身',code:'20'},{name:'外套',code:'30'},{name:'配件',code:'40'}];
+const DEFAULT_PROMOS=[
+  {id:1,name:'上衣多件折扣',type:'qty_tiers',enabled:true,scope:'cats',cats:['上衣'],skuCodes:[],tiers:[{minQty:3,disc:170},{minQty:6,disc:380}]},
+  {id:2,name:'滿2000折200',type:'amount_off',enabled:true,scope:'all',cats:[],skuCodes:[],minAmount:2000,offAmount:200},
+];
+const DEFAULT_PRODUCTS=[
+  {id:1,name:'棉質T恤',skuCode:'TOP-001',cat:'上衣',vendorId:1,price:490,cost:180,colors:'白色,黑色,灰色',sizes:'S,M,L,XL',skus:makeSkus('白色,黑色,灰色','S,M,L,XL',8)},
+  {id:2,name:'長袖上衣',skuCode:'TOP-002',cat:'上衣',vendorId:1,price:590,cost:220,colors:'黑色,深藍,酒紅',sizes:'S,M,L',skus:makeSkus('黑色,深藍,酒紅','S,M,L',7)},
+  {id:3,name:'條紋Polo衫',skuCode:'TOP-003',cat:'上衣',vendorId:2,price:780,cost:300,colors:'白底藍條,白底紅條',sizes:'M,L,XL',skus:makeSkus('白底藍條,白底紅條','M,L,XL',6)},
+  {id:4,name:'牛仔直筒褲',skuCode:'BTM-001',cat:'下身',vendorId:2,price:1290,cost:480,colors:'淺藍,深藍,黑色',sizes:'28,30,32',skus:makeSkus('淺藍,深藍,黑色','28,30,32',5)},
+  {id:5,name:'休閒寬褲',skuCode:'BTM-002',cat:'下身',vendorId:2,price:990,cost:380,colors:'米白,卡其,黑色',sizes:'S,M,L',skus:makeSkus('米白,卡其,黑色','S,M,L',6)},
+  {id:6,name:'連帽外套',skuCode:'OUT-001',cat:'外套',vendorId:1,price:1890,cost:700,colors:'灰色,黑色,軍綠',sizes:'M,L,XL',skus:makeSkus('灰色,黑色,軍綠','M,L,XL',4)},
+  {id:7,name:'牛仔外套',skuCode:'OUT-002',cat:'外套',vendorId:2,price:2290,cost:850,colors:'淺藍,深藍',sizes:'S,M,L,XL',skus:makeSkus('淺藍,深藍','S,M,L,XL',3)},
+  {id:8,name:'棒球帽',skuCode:'ACC-001',cat:'配件',vendorId:1,price:590,cost:200,colors:'黑色,白色,卡其',sizes:'F',skus:makeSkus('黑色,白色,卡其','F',8)},
+  {id:9,name:'帆布托特包',skuCode:'ACC-002',cat:'配件',vendorId:1,price:890,cost:320,colors:'原色,黑色',sizes:'F',skus:makeSkus('原色,黑色','F',7)},
+];
 
 // ============================================================
 // DEFAULT MEMBER DATA
 // ============================================================
-const DEFAULT_MEMBER_TIERS=[];
+const DEFAULT_MEMBER_TIERS=[{name:'銀卡',minSpent:5000},{name:'金卡',minSpent:15000},{name:'黑卡',minSpent:50000}];
 const DEFAULT_POINTS_SETTINGS={perSpend:100,unit:10,value:10,newMemberBonus:100};
 
 // ============================================================
 // STATE
 // ============================================================
-let products=[],orders=[],nextId=1,categories=[...DEFAULT_CATS],promos=[],nextPromoId=3;
+let products=[],orders=[],nextId=10,categories=[...DEFAULT_CATS],promos=[],nextPromoId=3;
 let coupons=[],nextCouponSeq=1,orderSeq={};
 let vendors=[],payMethods=[...DEFAULT_PAY_METHODS];
 let expenses=[],nextExpenseId=1;
@@ -3042,8 +3043,7 @@ function quickCheckout(method){
 // SPEC PICKER
 // ============================================================
 function openSpec(id){
-  id=Number(id);
-  const p=products.find(x=>Number(x.id)===id);if(!p)return;
+  const p=products.find(x=>x.id===id);if(!p)return;
   if(getPTotalStock(p)===0){alert('此商品已售完');return;}
   specProductId=id;selectedColor=null;selectedSize=null;
   document.getElementById('spec-title').textContent=p.name+(p.skuCode?' ['+p.skuCode+']':'')+'  $'+p.price;
@@ -3855,7 +3855,7 @@ function _doRenderInventory(){
     if(p.cat.toLowerCase().includes(q))return true;
     if((p.colors||'').toLowerCase().includes(q))return true;
     if((p.sizes||'').toLowerCase().includes(q))return true;
-    const v=vendors.find(x=>x.id===p.vendorId);
+    const v=vendors.find(x=>Number(x.id)===Number(p.vendorId));
     if(v&&v.name.toLowerCase().includes(q))return true;
     return false;
   });
@@ -3883,7 +3883,6 @@ function _doRenderInventory(){
       ${skuHtml}
     </div>`;
   }).join('')||'<div style="text-align:center;color:var(--tx3);padding:26px;font-size:12px">查無商品</div>';
-  // 手機版和桌面版同步更新，確保不論點哪個都對應正確商品
   const dInv=document.getElementById('d-inv-list');
   const mInv=document.getElementById('inv-list');
   if(dInv)dInv.innerHTML=html;
@@ -3940,7 +3939,7 @@ function saveSkuStock(){
 }
 
 // PRODUCT CRUD
-function getVendorOptions(sel=0){return['<option value="">（無廠商）</option>',...vendors.map(v=>`<option value="${v.id}" ${Number(v.id)===Number(sel)?'selected':''}>${v.name}</option>`)].join('');}
+function getVendorOptions(sel=0){sel=Number(sel);return['<option value="">（無廠商）</option>',...vendors.map(v=>`<option value="${v.id}" ${Number(v.id)===sel?'selected':''}>${v.name}</option>`)].join('');}
 function getCatOptions(sel=''){return categories.map(c=>{const n=getCatName(c);return `<option value="${n}" ${n===sel?'selected':''}>${n}</option>`;}).join('');}
 function autoGenBarcode(){
   const catName=(document.getElementById('d-f-cat')||document.getElementById('f-cat'))?.value||'';
@@ -3971,50 +3970,63 @@ function openAddProduct(){
   renderColorPicker([]);renderSizePicker([]);
   openModal('modal-product');
 }
-function setField(id,val,prop='value'){['f-'+id,'d-f-'+id].forEach(i=>{const e=document.getElementById(i);if(e)e[prop]=val;});}
 function openEditProduct(id){
-  id=Number(id);
-  const p=products.find(x=>Number(x.id)===id);if(!p)return;
+  const p=products.find(x=>x.id===id);if(!p)return;
+  console.log('=== openEditProduct ===');
+  console.log('p.id=',p.id,'type=',typeof p.id);
+  console.log('p.vendorId=',p.vendorId,'type=',typeof p.vendorId);
+  console.log('vendors=',JSON.stringify(vendors.map(v=>({id:v.id,tid:typeof v.id,name:v.name}))));
   editingProductId=id;
-  ['modal-title','d-modal-title'].forEach(i=>{const e=document.getElementById(i);if(e)e.textContent='編輯商品';});
-  setField('f-name',p.name);
-  setField('f-sku',p.skuCode||'');
+  document.getElementById('modal-title').textContent='編輯商品';
+  document.getElementById('f-name').value=p.name;
+  document.getElementById('f-sku').value=p.skuCode||'';
   ['f-barcode','d-f-barcode'].forEach(id=>{const bc=document.getElementById(id);if(bc)bc.value=p.barcode||'';});
-  ['f-addon-price','d-f-addon-price'].forEach(id=>{const e=document.getElementById(id);if(e)e.value=p.addOnPrice||'';});
-  setField('f-cat',getCatOptions(p.cat),'innerHTML');
-  setField('f-vendor',getVendorOptions(p.vendorId||0),'innerHTML');
-  setField('f-price',p.price);
-  setField('f-cost',p.cost);
-  setField('f-colors',p.colors||'');
+  const ap=document.getElementById('f-addon-price');if(ap)ap.value=p.addOnPrice||'';
+  document.getElementById('f-cat').innerHTML=getCatOptions(p.cat);
+  document.getElementById('f-vendor').innerHTML=getVendorOptions(p.vendorId||0);
+  console.log('f-vendor.value after set=',document.getElementById('f-vendor').value);
+  console.log('f-vendor selected option=',document.getElementById('f-vendor').options[document.getElementById('f-vendor').selectedIndex]?.text);
+  document.getElementById('f-price').value=p.price;
+  document.getElementById('f-cost').value=p.cost;
+  document.getElementById('f-colors').value=p.colors||'';
   document.getElementById('f-sizes').value=p.sizes||'';
   const selC=(p.colors||'').split(',').map(s=>s.trim()).filter(Boolean);
   const selS=(p.sizes||'').split(',').map(s=>s.trim()).filter(Boolean);
   renderColorPicker(selC);renderSizePicker(selS);
   openModal('modal-product');
 }
-function getField(id){return document.getElementById('d-'+id)||document.getElementById(id);}
 function saveProduct(){
-  const name=getField('f-name').value.trim();
+  const name=document.getElementById('f-name').value.trim();
   if(!name){alert('請輸入商品名稱');return;}
-  const colors=getField('f-colors').value.trim();
-  const sizes=getField('f-sizes').value.trim();
+  const colors=document.getElementById('f-colors').value.trim();
+  const sizes=document.getElementById('f-sizes').value.trim();
   const cs=colors.split(',').map(s=>s.trim()).filter(Boolean);
   const ss=sizes.split(',').map(s=>s.trim()).filter(Boolean);
-  const barcode=((document.getElementById('d-f-barcode')||getField('f-barcode'))?.value||'').trim().toUpperCase();
-  const addOnPriceVal=getField('f-addon-price')?.value;
+  const barcode=((document.getElementById('d-f-barcode')||document.getElementById('f-barcode'))?.value||'').trim().toUpperCase();
+  const addOnPriceVal=document.getElementById('f-addon-price')?.value;
   const addOnPrice=addOnPriceVal&&addOnPriceVal!==''?parseInt(addOnPriceVal)||0:null;
-  const data={name,skuCode:getField('f-sku').value.trim().toUpperCase()||'',
+  const data={name,skuCode:document.getElementById('f-sku').value.trim().toUpperCase()||'',
     barcode, addOnPrice,
-    cat:getField('f-cat').value||categories[0]||'其他',
-    vendorId:parseInt(getField('f-vendor').value)||0,
-    price:parseInt(getField('f-price').value)||0,
-    cost:parseInt(getField('f-cost').value)||0,colors,sizes};
+    cat:document.getElementById('f-cat').value||categories[0]||'其他',
+    vendorId:(()=>{
+      const el=document.getElementById('f-vendor');
+      console.log('=== saveProduct ===');
+      console.log('f-vendor.value=',el?.value,'selectedIndex=',el?.selectedIndex);
+      console.log('selected text=',el?.options[el?.selectedIndex]?.text);
+      return parseInt(el?.value)||0;
+    })(),
+    price:parseInt(document.getElementById('f-price').value)||0,
+    cost:parseInt(document.getElementById('f-cost').value)||0,colors,sizes};
   if(editingProductId){
     const p=products.find(x=>x.id===editingProductId);
     const oldSkus=p.skus||[];
     const newSkus=[];
     for(const c of cs)for(const sz of ss){const old=oldSkus.find(s=>s.color===c&&s.size===sz);newSkus.push({color:c,size:sz,stock:old?old.stock:0});}
     Object.assign(p,{...data,skus:newSkus});
+    console.log('=== 儲存後 product ===');
+    console.log('p.vendorId=',p.vendorId,'type=',typeof p.vendorId);
+    const _vCheck=vendors.find(x=>Number(x.id)===Number(p.vendorId));
+    console.log('vendors.find 結果=',_vCheck?.name);
   }else{
     products.push({id:nextId++,...data,skus:makeSkus(colors,sizes,0)});
   }
@@ -4311,7 +4323,7 @@ function renderPOs(){
 
   const html=!purchaseOrders.length?'<div style="text-align:center;color:var(--tx3);padding:26px;font-size:12px">尚無採購記錄</div>'
     :[...purchaseOrders].reverse().map(po=>{
-      const v=vendors.find(x=>x.id===po.vendorId);
+      const v=vendors.find(x=>Number(x.id)===Number(po.vendorId));
       const totalQty=po.items.reduce((s,i)=>s+(i.qty||1),0);
       const itemCost=po.items.reduce((s,i)=>s+(i.cost||0)*(i.qty||1),0);
       const totalCost=itemCost+(po.extraCost||0);
@@ -4696,7 +4708,7 @@ function openPODetail(id){
   if(isDone){
     const totalQty=po.items.reduce((s,i)=>s+(i.qty||1),0);
     const totalCost=po.items.reduce((s,i)=>s+(i.cost||0)*(i.qty||1),0)+(po.extraCost||0);
-    const v=vendors.find(x=>x.id===po.vendorId);
+    const v=vendors.find(x=>Number(x.id)===Number(po.vendorId));
     const rows=po.items.map(i=>`
       <tr style="border-bottom:1px solid var(--bd)">
         <td style="padding:5px 4px;font-size:11px;color:var(--tx2)">${i.vendorSku||'—'}</td>
@@ -4934,7 +4946,6 @@ function addVendorFromManager(){
   const name=(document.getElementById('vm-name')?.value||'').trim();
   const contact=(document.getElementById('vm-code')?.value||'').trim();
   if(!name){alert('請輸入廠商名稱');return;}
-  while(vendors.some(v=>Number(v.id)===nextVendorId))nextVendorId++;
   vendors.push({id:nextVendorId++,name,contact});save();
   document.getElementById('vm-name').value='';document.getElementById('vm-code').value='';
   renderVendorManagerList();renderSettings();
@@ -5342,7 +5353,7 @@ function exportInventoryExcel(){
   }
   const rows=[['商品名稱','條碼','廠商貨號','分類','廠商','售價','加購價','顏色','尺寸','庫存']];
   products.forEach(p=>{
-    const v=vendors.find(x=>x.id===p.vendorId);
+    const v=vendors.find(x=>Number(x.id)===Number(p.vendorId));
     const addOnPrice=p.addOnPrice!=null&&p.addOnPrice!==''?Number(p.addOnPrice):'';
     if(p.skus&&p.skus.length){
       p.skus.forEach(sk=>{
@@ -6767,7 +6778,7 @@ function renderAccounting(){
   const poHtml=!poInRange.length?'<div style="color:var(--tx3);font-size:12px;padding:10px 0">此區間無已入庫採購記錄</div>'
     :`<div style="font-size:11px;margin-bottom:8px;color:var(--tx2)">已入庫採購單 ${poInRange.length} 筆</div>
     ${poInRange.map(po=>{
-      const v=vendors.find(x=>x.id===po.vendorId);
+      const v=vendors.find(x=>Number(x.id)===Number(po.vendorId));
       const itemCost=po.items.reduce((s,i)=>(i.cost||0)*(i.qty||1)+s,0);
       const total=itemCost+(po.extraCost||0);
       return `<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid var(--bd);font-size:11px">
