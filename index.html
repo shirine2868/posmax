@@ -1594,7 +1594,7 @@ html,body{height:100%;width:100%;overflow:hidden;font-family:'Noto Sans TC',sans
       <div style="display:flex;gap:6px;margin-bottom:6px">
         <div style="flex:1.2">
           <div style="font-size:10px;color:var(--tx3);margin-bottom:3px">貨號（比對商品）</div>
-          <input class="form-input" id="po-quick-sku" placeholder="貨號" style="padding:7px 9px;font-size:12px;font-family:'JetBrains Mono',monospace;text-transform:uppercase" oninput="onPOQuickSku(this.value)">
+          <input class="form-input" id="po-quick-sku" placeholder="貨號" style="padding:7px 9px;font-size:12px;font-family:'JetBrains Mono',monospace;text-transform:uppercase" oninput="onPOQuickSku(this.value)" onkeydown="if(event.key==='Enter'){event.preventDefault();poQuickEnterSelect(false);}else if(event.key==='Backspace'&&!this.value){event.preventDefault();poQuickBackspaceSelect(false);}">
         </div>
         <div style="flex:1">
           <div style="font-size:10px;color:var(--tx3);margin-bottom:3px">條碼</div>
@@ -1878,6 +1878,7 @@ let lowStockThreshold=5,lowStockSuggestQty=10;
 let cartMemberId=null;
 let returnOrderRef=null,returnItemSelections=[];
 let nextVendorId=3;
+let desktopPendingSkus=[]; // 桌面版暫選規格（按加入清單才真正加入）
 // 購物車退換貨狀態
 let cartReturnDisc=0;
 let cartReturnOrderId=null;
@@ -2164,15 +2165,16 @@ function dOpenPOModal(){
       <div style="font-size:10px;font-weight:700;color:var(--ac);margin-bottom:8px">⚡ 快速新增品項</div>
       <div style="display:flex;gap:6px;margin-bottom:6px">
         <div style="flex:1.2"><div style="font-size:10px;color:var(--tx3);margin-bottom:3px">貨號（比對商品）</div>
-          <input class="form-input" id="d-po-quick-sku" placeholder="貨號" style="padding:7px 9px;font-size:12px;font-family:'JetBrains Mono',monospace;text-transform:uppercase" oninput="dOnPOQuickSku(this.value)"></div>
+          <input class="form-input" id="d-po-quick-sku" placeholder="貨號" style="padding:7px 9px;font-size:12px;font-family:'JetBrains Mono',monospace;text-transform:uppercase" oninput="dOnPOQuickSku(this.value)" onkeydown="if(event.key==='Enter'){event.preventDefault();poQuickEnterSelect(true);}else if(event.key==='Backspace'&&!this.value){event.preventDefault();poQuickBackspaceSelect(true);}"></div>
         <div style="flex:1"><div style="font-size:10px;color:var(--tx3);margin-bottom:3px">條碼</div>
           <input class="form-input" id="d-po-quick-barcode" placeholder="條碼" style="padding:7px 9px;font-size:12px;font-family:'JetBrains Mono',monospace;text-transform:uppercase"></div>
         <div style="flex:1.5"><div style="font-size:10px;color:var(--tx3);margin-bottom:3px">品名</div>
           <input class="form-input" id="d-po-quick-name" placeholder="品名" style="padding:7px 9px;font-size:12px"></div>
       </div>
-      <div style="display:flex;gap:6px;align-items:center">
+      <div id="d-po-quick-sku-chips" style="margin-top:6px"></div>
+      <div style="display:flex;gap:6px;align-items:center;margin-top:6px">
         <input class="form-input" type="number" id="d-po-quick-cost" placeholder="單件成本$" style="flex:1;padding:7px 9px;font-size:12px" onkeydown="if(event.key==='Enter'){event.preventDefault();dAddPOItem();}">
-        <button class="btn btn-primary btn-sm" onclick="dAddPOItem()">＋ 加入清單</button>
+        <button class="btn btn-primary btn-sm" id="d-po-add-btn" onclick="dAddPOItem()">＋ 加入清單</button>
       </div>
     </div>
     <div style="font-size:10px;font-weight:700;color:var(--pu);margin-bottom:6px">採購品項明細</div>
@@ -2204,11 +2206,16 @@ function dClosePOModal(){
   editingPOId=null;poItems=[];
 }
 function dOnPOQuickSku(val){
-  if(!val)return;
-  const p=products.find(x=>x.skuCode&&x.skuCode.toUpperCase()===val.toUpperCase());
+  const upper=(val||'').toUpperCase().trim();
+  const p=products.find(x=>x.skuCode&&x.skuCode.toUpperCase()===upper);
   if(p){
     const n=document.getElementById('d-po-quick-name');if(n&&!n.value)n.value=p.name;
     const c=document.getElementById('d-po-quick-cost');if(c&&!c.value)c.value=p.cost||0;
+    const b=document.getElementById('d-po-quick-barcode');if(b&&!b.value)b.value=p.barcode||'';
+    renderPOQuickChips(p);
+  }else{
+    const el=document.getElementById('d-po-quick-sku-chips');if(el)el.innerHTML='';
+    setEl(['po-quick-sku-chips'],'',true);
   }
 }
 function dAddPOItem(){
@@ -2217,9 +2224,19 @@ function dAddPOItem(){
   const productName=(document.getElementById('d-po-quick-name')?.value||'').trim();
   const cost=parseInt(document.getElementById('d-po-quick-cost')?.value||0)||0;
   if(!productName&&!skuCode&&!vendorSku){alert('請至少輸入品名、貨號或條碼');return;}
-  poItems.push({vendorSku,skuCode,productName,skuDesc:'',qty:1,cost});
+  const p=skuCode?products.find(x=>(x.skuCode||'').toUpperCase()===skuCode):null;
+  if(desktopPendingSkus.length>0){
+    // 把暫選規格全部加入
+    desktopPendingSkus.forEach(ps=>{
+      poItems.push({vendorSku,skuCode:ps.skuCode||skuCode,productName:productName||(p?p.name:''),skuDesc:ps.label,qty:1,cost:cost||(p?p.cost:0)});
+    });
+    desktopPendingSkus=[];
+  }else{
+    poItems.push({vendorSku,skuCode,productName,skuDesc:'',qty:1,cost});
+  }
   dRenderPOItems();dUpdatePOCostSummary();
   ['d-po-quick-sku','d-po-quick-barcode','d-po-quick-name','d-po-quick-cost'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
+  desktopPendingSkus=[];const _dc=document.getElementById('d-po-quick-sku-chips');if(_dc)_dc.innerHTML='';
   setTimeout(()=>document.getElementById('d-po-quick-sku')?.focus(),50);
 }
 function dRenderPOItems(){
@@ -4437,62 +4454,185 @@ function onPOQuickSku(val){
 
 // 規格快選按鈕（連續多選）
 function renderPOQuickChips(p){
-  if(!p||!p.skus?.length){setEl(['po-quick-sku-chips'],'',true);return;}
-  const skuCode=(document.getElementById('po-quick-sku')?.value||'').toUpperCase().trim();
+  if(!p||!p.skus?.length){setEl(['po-quick-sku-chips'],'',true);const dc=document.getElementById('d-po-quick-sku-chips');if(dc)dc.innerHTML='';return;}
+  const skuCode=(document.getElementById(isDesktop?'d-po-quick-sku':'po-quick-sku')?.value||p.skuCode||'').toUpperCase().trim();
   const pp=p||products.find(x=>x.skuCode&&x.skuCode.toUpperCase()===skuCode);
   if(!pp)return;
-  const html=`<div style="font-size:10px;color:var(--tx3);margin-bottom:4px">點選規格（可連續多選，每選一個加入下方表格）</div>
+  const _skuBtns=pp.skus.map((s,_si)=>{
+    const label=s.color+(s.size&&s.size!=='F'?'/'+s.size:'');
+    const alreadyInItems=poItems.some(x=>x.skuCode===pp.skuCode&&x.skuDesc===label);
+    const pending=desktopPendingSkus.some(x=>x.label===label&&x.skuCode===pp.skuCode);
+    const mobileActive=alreadyInItems;
+    const desktopActive=pending;
+    return {label,s,mobileActive,desktopActive};
+  });
+  const mobileHtml=`<div style="font-size:10px;color:var(--tx3);margin-bottom:4px">點選規格加入清單</div>
     <div style="display:flex;flex-wrap:wrap;gap:4px">
-      ${pp.skus.map(s=>{
-        const label=s.color+(s.size&&s.size!=='F'?'/'+s.size:'');
-        const alreadyInItems=poItems.some(x=>x.skuCode===pp.skuCode&&x.skuDesc===label);
-        return `<button type="button"
-          onclick="togglePOQuickSku('${label.replace(/'/g,"\\'")}',${pp.id})"
+      ${_skuBtns.map(({label,s,mobileActive})=>`<button type="button"
+          onclick="togglePOQuickSku('${label.replace(/'/g,"\'")}',${pp.id})"
           id="pqs-btn-${label.replace(/[^a-zA-Z0-9]/g,'_')}"
-          style="padding:4px 10px;border-radius:6px;border:1.5px solid ${alreadyInItems?'var(--gn)':'var(--bd)'};
-          background:${alreadyInItems?'rgba(63,185,80,.15)':'var(--sf2)'};
-          color:${alreadyInItems?'var(--gn)':'var(--tx2)'};font-size:11px;cursor:pointer;white-space:nowrap">
+          style="padding:4px 10px;border-radius:6px;border:1.5px solid ${mobileActive?'var(--gn)':'var(--bd)'};background:${mobileActive?'rgba(63,185,80,.15)':'var(--sf2)'};color:${mobileActive?'var(--gn)':'var(--tx2)'};font-size:11px;cursor:pointer;white-space:nowrap">
           ${label} <span style="font-size:9px;color:var(--tx3)">(庫存${s.stock})</span>
-        </button>`;
-      }).join('')}
+        </button>`).join('')}
     </div>`;
+  const desktopHtml=`<div style="font-size:10px;color:var(--tx3);margin-bottom:4px">Enter選取規格，空白鍵/← →移動，選好後按「加入清單」</div>
+    <div style="display:flex;flex-wrap:wrap;gap:4px">
+      ${_skuBtns.map(({label,s,desktopActive})=>`<button type="button"
+          data-label="${label.replace(/"/g,'&quot;')}" data-pid="${pp.id}" data-skucode="${pp.skuCode}"
+          id="dpqs-btn-${label.replace(/[^a-zA-Z0-9]/g,'_')}"
+          style="padding:4px 10px;border-radius:6px;border:1.5px solid ${desktopActive?'var(--gn)':'var(--bd)'};background:${desktopActive?'rgba(63,185,80,.15)':'var(--sf2)'};color:${desktopActive?'var(--gn)':'var(--tx2)'};font-size:11px;cursor:pointer;white-space:nowrap">
+          ${label} <span style="font-size:9px;color:var(--tx3)">(庫存${s.stock})</span>
+        </button>`).join('')}
+    </div>`;
+  const html=mobileHtml;
   document.getElementById('po-quick-sku-chips').innerHTML=html;
+  // 桌面版用不同 HTML（暫選模式）
+  const _dChips=document.getElementById('d-po-quick-sku-chips');
+  if(_dChips){
+    _dChips.innerHTML=desktopHtml;
+    // 附加鍵盤事件
+    const btns=[..._dChips.querySelectorAll('button[data-label]')];
+    btns.forEach((btn,i)=>{
+      btn.setAttribute('tabindex','0');
+      btn.onclick=function(){dTogglePendingSku(this.dataset.label,this.dataset.skucode);};
+      btn.onkeydown=function(e){
+        if(e.key==='Enter'){
+          e.preventDefault();
+          dTogglePendingSku(this.dataset.label,this.dataset.skucode);
+          // focus 交由 dTogglePendingSku 處理
+        }
+        else if(e.key===' '||e.key==='ArrowRight'){e.preventDefault();const n=btns[i+1];if(n)n.focus();}
+        else if(e.key==='ArrowLeft'){e.preventDefault();const n=btns[i-1];if(n)n.focus();}
+        else if(e.key==='Escape'){e.preventDefault();document.getElementById('d-po-quick-sku')?.focus();}
+      };
+    });
+  }
+  // 空白鍵選取當前規格並自動跳下一個
+  ['po-quick-sku-chips','d-po-quick-sku-chips'].forEach(cid=>{
+    const container=document.getElementById(cid);
+    if(!container)return;
+    container.querySelectorAll('button').forEach((btn,i,arr)=>{
+      btn.setAttribute('tabindex','0');
+      btn.onkeydown=function(e){
+        if(e.key==='Enter'){
+          // Enter：選取當前規格，跳下一個
+          e.preventDefault();
+          btn.click();
+          const next=arr[i+1];
+          if(next)setTimeout(()=>next.focus(),30);
+        } else if(e.key===' '){
+          // 空白鍵：只移到下一個，不選取
+          e.preventDefault();
+          const next=arr[i+1];
+          if(next)next.focus();
+        } else if(e.key==='ArrowRight'){
+          e.preventDefault();
+          const next=arr[i+1];if(next)next.focus();
+        } else if(e.key==='ArrowLeft'){
+          e.preventDefault();
+          const prev=arr[i-1];if(prev)prev.focus();
+        } else if(e.key==='Escape'){
+          e.preventDefault();
+          const desktop=cid==='d-po-quick-sku-chips';
+          const skuEl=document.getElementById(desktop?'d-po-quick-sku':'po-quick-sku');
+          if(skuEl)skuEl.focus();
+        }
+      };
+    });
+  });
   renderPOQuickSelectedTable();
 }
 
 // 連續點選規格：直接新增到 poItems
+function dTogglePendingSku(label, skuCode){
+  const idx=desktopPendingSkus.findIndex(x=>x.label===label&&x.skuCode===skuCode);
+  if(idx>=0) desktopPendingSkus.splice(idx,1);
+  else desktopPendingSkus.push({label,skuCode});
+  const p=products.find(x=>(x.skuCode||'').toUpperCase()===skuCode.toUpperCase());
+  if(p)renderPOQuickChips(p);
+  setTimeout(()=>{
+    const chips=document.getElementById('d-po-quick-sku-chips');
+    const btns=chips?[...chips.querySelectorAll('button[data-label]')]:[];
+    const curIdx=btns.findIndex(b=>b.dataset.label===label);
+    const next=btns[curIdx+1];
+    if(next){
+      next.focus();
+    }else{
+      // 最後一個規格選完，焦點移到「加入清單」按鈕
+      const addBtn=document.getElementById('d-po-add-btn');
+      if(addBtn)addBtn.focus();
+    }
+  },30);
+}
+function poQuickEnterSelect(desktop){
+  const chipsId=desktop?'d-po-quick-sku-chips':'po-quick-sku-chips';
+  // 先觸發 oninput 確保規格已渲染，再 focus
+  const skuEl=document.getElementById(desktop?'d-po-quick-sku':'po-quick-sku');
+  if(desktop)dOnPOQuickSku(skuEl?.value||'');else onPOQuickSku(skuEl?.value||'');
+  setTimeout(()=>{
+    const chips=document.getElementById(chipsId);
+    if(chips){
+      const firstBtn=chips.querySelector('button');
+      if(firstBtn){firstBtn.focus();return;}
+    }
+    if(desktop)dAddPOItem();else addPOItem();
+  },50);
+}
+function poQuickBackspaceSelect(desktop){
+  const skuVal=(desktop?document.getElementById('d-po-quick-sku'):document.getElementById('po-quick-sku'))?.value||'';
+  const upper=skuVal.toUpperCase().trim();
+  // 找最後一個加入的相同貨號規格並移除
+  for(let i=poItems.length-1;i>=0;i--){
+    if(poItems[i].skuCode===upper&&poItems[i].skuDesc){
+      poItems.splice(i,1);
+      if(desktop){dRenderPOItems();dUpdatePOCostSummary();}else renderPOItems();
+      const p=products.find(x=>x.skuCode&&x.skuCode.toUpperCase()===upper);
+      if(p)renderPOQuickChips(p);
+      renderPOQuickSelectedTable();
+      return;
+    }
+  }
+}
 function togglePOQuickSku(label, productId){
-  const skuEl=document.getElementById('po-quick-sku');
-  const nameEl=document.getElementById('po-quick-name');
-  const costEl=document.getElementById('po-quick-cost');
-  const vendorSkuEl=document.getElementById('po-quick-vendor-sku');
+  // 桌面版優先，找不到才用手機版
+  const _p=id=>document.getElementById(isDesktop?'d-'+id:id)||document.getElementById(id);
+  const skuEl=_p('po-quick-sku');
+  const nameEl=_p('po-quick-name');
+  const costEl=_p('po-quick-cost');
+  const vendorSkuEl=isDesktop?document.getElementById('d-po-quick-barcode'):document.getElementById('po-quick-vendor-sku');
   const skuCode=(skuEl?.value||'').toUpperCase().trim();
   const productName=nameEl?.value||'';
   const cost=parseInt(costEl?.value||0)||0;
   const vendorSku=(vendorSkuEl?.value||'').toUpperCase().trim();
-  const p=products.find(x=>x.id===productId)||products.find(x=>x.skuCode&&x.skuCode.toUpperCase()===skuCode);
-
+  const p=products.find(x=>Number(x.id)===Number(productId))||products.find(x=>x.skuCode&&x.skuCode.toUpperCase()===skuCode);
+  // 若 skuCode 空（桌面版欄位讀不到時），從商品本身取
+  const finalSkuCode=skuCode||(p?p.skuCode:'');
+  const finalVendorSku=vendorSku||(p?p.barcode:'');
   const targetName=productName||(p?p.name:'');
-  const targetSku=skuCode;
+  const targetSku=finalSkuCode;
   // 只移除 skuDesc 為空字串（不是undefined）的同商品空行
-  poItems=poItems.filter(x=>!(x.skuDesc===''&&(x.productName===targetName||x.skuCode===targetSku)));
+  poItems=poItems.filter(x=>!(x.skuDesc===''&&(x.productName===targetName||x.skuCode===finalSkuCode)));
 
   // 若此規格已在清單，則移除（取消選取）
-  const existIdx=poItems.findIndex(x=>x.skuCode===skuCode&&x.skuDesc===label);
+  const existIdx=poItems.findIndex(x=>x.skuCode===finalSkuCode&&x.skuDesc===label);
   if(existIdx>=0){
     poItems.splice(existIdx,1);
   }else{
     // 新增到清單
     poItems.push({
-      vendorSku,
-      skuCode,
+      vendorSku: finalVendorSku,
+      skuCode: finalSkuCode,
       productName: productName||(p?p.name:''),
       skuDesc: label,
       qty: 1,
       cost: cost||(p?p.cost:0)
     });
   }
-  renderPOItems();
+  if(isDesktop){
+    dRenderPOItems();dUpdatePOCostSummary();
+  }else{
+    renderPOItems();
+  }
   renderPOQuickSelectedTable();
   // 更新快選按鈕狀態
   if(p)renderPOQuickChips(p);
