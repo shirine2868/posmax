@@ -77,7 +77,8 @@ function applyRemoteData(key, val) {
     switch(key) {
       case 'products':
         products=val;
-        (function(){products.forEach(p=>{if(p.id!==undefined)p.id=Number(p.id);});const seen=new Set();let mx=0;products.forEach(p=>{if(p.id>mx)mx=p.id;});products.forEach(p=>{if(seen.has(p.id)){mx++;p.id=mx;}seen.add(p.id);});if(mx>=nextId){nextId=mx+1;localStorage.setItem(KEYS.nextId,String(nextId));}})();
+        products.forEach(p=>{if(p.id!==undefined)p.id=Number(p.id);});
+        (function(){const seen=new Set();let mx=0;products.forEach(p=>{if(p.id>mx)mx=p.id;});products.forEach(p=>{if(seen.has(p.id)){mx++;p.id=mx;}seen.add(p.id);});if(mx>=nextId){nextId=mx+1;localStorage.setItem(KEYS.nextId,String(nextId));}})();
         renderAll(); break;
       case 'orders': orders=val; renderOrders(); renderDashboard(); break;
       case 'members': members=val; renderMembers(); break;
@@ -166,11 +167,7 @@ function importAllDataJSON(input){
       const data=JSON.parse(e.target.result);
       if(!data.products&&!data.orders){showNotif('❌ 檔案格式錯誤','var(--rd)');return;}
       if(!confirm(`確定要從備份還原？\n備份時間：${data.exportTime||'未知'}\n商品：${(data.products||[]).length}個\n訂單：${(data.orders||[]).length}筆\n\n⚠️ 這會覆蓋目前所有資料！`))return;
-      if(data.products){
-        products=data.products;
-        (function(){products.forEach(p=>{if(p.id!==undefined)p.id=Number(p.id);});const seen=new Set();let mx=0;products.forEach(p=>{if(p.id>mx)mx=p.id;});products.forEach(p=>{if(seen.has(p.id)){mx++;p.id=mx;}seen.add(p.id);});if(mx>=nextId){nextId=mx+1;}})();
-        localStorage.setItem(KEYS.products,JSON.stringify(products));
-      }
+      if(data.products){products=data.products;localStorage.setItem(KEYS.products,JSON.stringify(products));}
       if(data.orders){orders=data.orders;localStorage.setItem(KEYS.orders,JSON.stringify(orders));}
       if(data.members){members=data.members;localStorage.setItem(KEYS.members,JSON.stringify(members));}
       if(data.promos){promos=data.promos;localStorage.setItem(KEYS.promos,JSON.stringify(promos));}
@@ -234,8 +231,6 @@ function importProductsExcel(input){
         added.push(name);
       }
       localStorage.setItem(KEYS.products,JSON.stringify(products));
-      const _maxId=products.reduce((mx,p)=>Math.max(mx,Number(p.id)||0),0);
-      if(nextId<=_maxId)nextId=_maxId+1;
       localStorage.setItem(KEYS.nextId,String(nextId));
       save();renderProducts();renderInventory();renderDashboard();
       uploadAllToCloud();
@@ -1759,10 +1754,10 @@ function load(){
   try{
     const g=(k,def)=>{const v=localStorage.getItem(k);return v?JSON.parse(v):def;};
     products=g(KEYS.products,null)||[];
-    // ── 修正重複 ID & 確保 id 為 number ────────────────────────
+    // 修正重複 ID：確保每個商品 id 都是 number 且唯一
     (function(){
       products.forEach(p=>{if(p.id!==undefined)p.id=Number(p.id);});
-      const seen=new Set();let maxId=0;
+      const seen=new Set(); let maxId=0;
       products.forEach(p=>{if(p.id>maxId)maxId=p.id;});
       products.forEach(p=>{
         if(seen.has(p.id)){maxId++;p.id=maxId;}
@@ -2535,7 +2530,7 @@ function renderInPosItems(pfx=''){
   const qSku=el.dataset.quickSku||'';
   const qPid=el.dataset.quickProductId||'';
   // 優先用 quickProductId，其次用貨號完整比對
-  const qP=qPid?products.find(x=>Number(x.id)===Number(qPid)):
+  const qP=qPid?products.find(x=>x.id===qPid):
             qSku?products.find(x=>x.skuCode&&x.skuCode.toUpperCase()===qSku.toUpperCase()):null;
   let skuBtns='';
   if(qP&&qP.skus?.length){
@@ -2953,13 +2948,13 @@ function confirmPosReturn(){
     if(qty>0){const item=posReturnData.items[parseInt(idx)];if(item)returnItems.push({...item,returnQty:qty});}
   });
   returnItems.forEach(item=>{
-    const p=products.find(x=>Number(x.id)===Number(item.id));if(!p)return;
+    const p=products.find(x=>x.id===item.id);if(!p)return;
     if(p.skus?.length){const sk=p.skus.find(s=>s.color===item.color&&s.size===item.size);if(sk)sk.stock+=item.returnQty;}
     else p.stock=(p.stock||0)+item.returnQty;
   });
   const validEx=(posExchangeItems||[]).filter(x=>x&&x.productId&&x.qty>0);
   validEx.forEach(ex=>{
-    const p=products.find(x=>Number(x.id)===Number(ex.productId));if(!p)return;
+    const p=products.find(x=>x.id===ex.productId);if(!p)return;
     if(ex.skuDesc){
       const parts=ex.skuDesc.split(/[/,]+/);
       const color=(parts[0]||'').trim(),size=(parts[1]||'').trim();
@@ -2973,7 +2968,7 @@ function confirmPosReturn(){
     date:new Date().toLocaleDateString('zh-TW'),time:new Date().toLocaleTimeString('zh-TW'),
     items:returnItems.map(i=>({name:i.name,color:i.color,size:i.size,qty:i.returnQty,price:i.price})),
     amount:customAmt,refundMethod:posReturnMethod,note,
-    exchangeItems:validEx.map(ex=>{const p=products.find(x=>Number(x.id)===Number(ex.productId));return{productName:p?.name||'',skuDesc:ex.skuDesc,qty:ex.qty};})
+    exchangeItems:validEx.map(ex=>{const p=products.find(x=>x.id===ex.productId);return{productName:p?.name||'',skuDesc:ex.skuDesc,qty:ex.qty};})
   });
   if(posReturnData.memberId){
     const m=members.find(x=>x.id===posReturnData.memberId);
@@ -3011,8 +3006,7 @@ function renderProducts(){
   const prefix=isDesktop?'d-':'';
   const q=(document.getElementById(prefix+'pos-search')?.value||'').toLowerCase().trim();
   const catEl=document.getElementById(prefix+'cat-scroll');
-  if(catEl){catEl.innerHTML=getCats().map(c=>`<button class="cat-btn ${c===currentCat?'active':''}" data-cat="${c.replace(/"/g,'&quot;')}">${c}</button>`).join('');
-    catEl.querySelectorAll('.cat-btn').forEach(btn=>btn.onclick=function(){selectCat(this.dataset.cat);});}
+  if(catEl)catEl.innerHTML=getCats().map(c=>`<button class="cat-btn ${c===currentCat?'active':''}" onclick="selectCat('${c}')">${c}</button>`).join('');
   const filtered=products.filter(p=>{
     const catOk=(currentCat==='全部'||p.cat===currentCat);
     if(!q)return catOk;
@@ -3041,10 +3035,9 @@ function selectCat(c){currentCat=c;renderProducts();}
 // PAY BUTTONS
 function renderPayGrid(){
   const cashBtn=`<button class="pay-btn pay-cash" style="grid-column:1/-1;font-size:15px;padding:11px" onclick="quickCheckout('現金')">💵 現金</button>`;
-  const otherBtns=payMethods.filter(m=>m!=='現金').map(m=>`<button class="pay-btn ${m==='刷卡'?'pay-card':m==='轉帳'?'pay-transfer':'pay-custom'}" data-method="${m.replace(/"/g,'&quot;')}">${m==='刷卡'?'💳':m==='轉帳'?'🏦':'💰'} ${m}</button>`).join('');
+  const otherBtns=payMethods.filter(m=>m!=='現金').map(m=>`<button class="pay-btn ${m==='刷卡'?'pay-card':m==='轉帳'?'pay-transfer':'pay-custom'}" onclick="quickCheckout('${m}')">${m==='刷卡'?'💳':m==='轉帳'?'🏦':'💰'} ${m}</button>`).join('');
   const multiBtn=`<button class="pay-btn" style="background:#e8e0f5;color:#5b21b6;font-size:11px" onclick="openPayModal()">💳 多種支付</button>`;
   setEl(['m-pay-grid','d-pay-grid'],cashBtn+otherBtns+multiBtn,true);
-  ['m-pay-grid','d-pay-grid'].forEach(id=>{const el=document.getElementById(id);if(!el)return;el.querySelectorAll('.pay-btn[data-method]').forEach(btn=>{btn.onclick=function(){quickCheckout(this.dataset.method);};});});
 }
 // 快速單一付款（直接結帳，不開 Modal）
 function quickCheckout(method){
@@ -3068,9 +3061,8 @@ function openSpec(id){
     cs.style.display='';
     document.getElementById('spec-colors').innerHTML=colors.map(c=>{
       const cst=p.skus?p.skus.filter(s=>s.color===c).reduce((a,b)=>a+b.stock,0):(p.stock||0);
-      return `<button class="chip ${cst===0?'disabled':''}" data-color="${c.replace(/"/g,'&quot;')}" ${cst>0?'':'disabled'}>${c}${cst===0?'<span style="font-size:8px;display:block;color:var(--rd)">售完</span>':''}</button>`;
+      return `<button class="chip ${cst===0?'disabled':''}" onclick="${cst>0?'selectSpecColor(\''+c+'\',this)':''}">${c}${cst===0?'<span style="font-size:8px;display:block;color:var(--rd)">售完</span>':''}</button>`;
     }).join('');
-    document.querySelectorAll('#spec-colors .chip:not([disabled])').forEach(btn=>{btn.onclick=function(){selectSpecColor(this.dataset.color,this);};});
     if(colors.length===1){const cst=p.skus?p.skus.filter(s=>s.color===colors[0]).reduce((a,b)=>a+b.stock,0):(p.stock||0);if(cst>0){selectedColor=colors[0];document.querySelector('#spec-colors .chip').classList.add('selected');renderSpecSizes(p,sizes);}}
   }else{cs.style.display='none';selectedColor=null;}
   if(!colors.length){ss.style.display='';renderSpecSizes(p,sizes);}
@@ -3085,22 +3077,21 @@ function renderSpecSizes(p,sizes){
   if(rs.length===1&&rs[0]==='F'){ss.style.display='none';selectedSize='F';updateSpecStockInfo(p);return;}
   document.getElementById('spec-sizes').innerHTML=rs.map(sz=>{
     const st=getSkuStock(p,selectedColor,sz);
-    return `<button class="chip size-chip ${st===0?'disabled':''}" data-size="${sz.replace(/"/g,'&quot;')}" ${st>0?'':'disabled'}>${sz}<span style="font-size:9px;display:block;color:${st===0?'var(--rd)':st<=3?'var(--yl)':'var(--tx3)'}">${st===0?'無貨':st}</span></button>`;
+    return `<button class="chip size-chip ${st===0?'disabled':''}" onclick="${st>0?'selectSpecSize(\''+sz+'\',this)':''}">${sz}<span style="font-size:9px;display:block;color:${st===0?'var(--rd)':st<=3?'var(--yl)':'var(--tx3)'}">${st===0?'無貨':st}</span></button>`;
   }).join('');
-  document.querySelectorAll('#spec-sizes .chip:not([disabled])').forEach(btn=>{btn.onclick=function(){selectSpecSize(this.dataset.size,this);};});
   if(rs.length===1&&getSkuStock(p,selectedColor,rs[0])>0){selectedSize=rs[0];document.querySelector('#spec-sizes .chip')?.classList.add('selected');}
   updateSpecStockInfo(p);
 }
 function selectSpecColor(c,btn){
   selectedColor=c;selectedSize=null;
   document.querySelectorAll('#spec-colors .chip').forEach(b=>b.classList.remove('selected'));btn.classList.add('selected');
-  const p=products.find(x=>Number(x.id)===Number(specProductId));if(!p)return;
+  const p=products.find(x=>x.id===specProductId);if(!p)return;
   renderSpecSizes(p,p.sizes?p.sizes.split(',').map(x=>x.trim()).filter(Boolean):[]);
 }
 function selectSpecSize(s,btn){
   selectedSize=s;
   document.querySelectorAll('#spec-sizes .chip').forEach(b=>b.classList.remove('selected'));btn.classList.add('selected');
-  updateSpecStockInfo(products.find(x=>Number(x.id)===Number(specProductId)));
+  updateSpecStockInfo(products.find(x=>x.id===specProductId));
 }
 function updateSpecStockInfo(p){
   if(!p)return;const el=document.getElementById('spec-stock-info');if(!el)return;
@@ -3108,7 +3099,7 @@ function updateSpecStockInfo(p){
   else el.textContent='';
 }
 function confirmSpec(){
-  const p=products.find(x=>Number(x.id)===Number(specProductId));if(!p)return;
+  const p=products.find(x=>x.id===specProductId);if(!p)return;
   const colors=p.colors?p.colors.split(',').map(x=>x.trim()).filter(Boolean):[];
   const sizes=p.sizes?p.sizes.split(',').map(x=>x.trim()).filter(Boolean):[];
   const hasFOnly=sizes.length===1&&sizes[0]==='F';
@@ -3322,7 +3313,7 @@ function clearCartReturn(pfx){
 })();
 function changeQty(key,d){
   const item=cart.find(x=>x.key===key);if(!item)return;
-  const p=products.find(x=>Number(x.id)===Number(item.id));
+  const p=products.find(x=>x.id===item.id);
   const avail=getSkuStock(p,item.color,item.size);
   item.qty+=d;
   if(d>0&&item.qty>avail)item.qty=avail;
@@ -3740,7 +3731,7 @@ function checkout(method, payBreakdown=[], change=0){
   const total=Math.max(0,sub-autoDisc-cpnDisc-pointsDisc-returnDisc-manualDisc);
   // 扣庫存
   cart.forEach(item=>{
-    const p=products.find(x=>Number(x.id)===Number(item.id));if(!p)return;
+    const p=products.find(x=>x.id===item.id);if(!p)return;
     if(p.skus?.length){const sk=p.skus.find(s=>s.color===item.color&&s.size===item.size);if(sk)sk.stock=Math.max(0,sk.stock-item.qty);}
     else p.stock=Math.max(0,(p.stock||0)-item.qty);
   });
@@ -3812,7 +3803,7 @@ function checkout(method, payBreakdown=[], change=0){
     }
     // 退貨品項還原庫存
     cartReturnItems.forEach(item=>{
-      const p=products.find(x=>Number(x.id)===Number(item.id));if(!p)return;
+      const p=products.find(x=>x.id===item.id);if(!p)return;
       if(p.skus?.length){const sk=p.skus.find(s=>s.color===item.color&&s.size===item.size);if(sk)sk.stock+=item.returnQty;}
       else p.stock=(p.stock||0)+item.returnQty;
     });
@@ -3862,9 +3853,7 @@ function renderInventory(){
   setTimeout(()=>{if(v===_renderInvVersion)_doRenderInventory();},150);
 }
 function _doRenderInventory(){
-  const prefix=isDesktop?'d-':'';
-  const targetId=isDesktop?'d-inv-list':'inv-list';
-  const q=(document.getElementById(prefix+'inv-search')?.value||'').toLowerCase().trim();
+  const q=(document.getElementById('d-inv-search')?.value||document.getElementById('inv-search')?.value||'').toLowerCase().trim();
   const filtered=products.filter(p=>{
     if(!q)return true;
     if(p.name.toLowerCase().includes(q))return true;
@@ -3901,10 +3890,11 @@ function _doRenderInventory(){
       ${skuHtml}
     </div>`;
   }).join('')||'<div style="text-align:center;color:var(--tx3);padding:26px;font-size:12px">查無商品</div>';
-  const dInv=document.getElementById('d-inv-list');if(dInv){dInv.innerHTML='';dInv.textContent='';}
-  const mInv=document.getElementById('inv-list');if(mInv){mInv.innerHTML='';mInv.textContent='';}
-  const targetEl=document.getElementById(targetId);
-  if(targetEl){targetEl.innerHTML='';targetEl.innerHTML=html;}
+  // 手機版和桌面版同步更新，確保不論點哪個都對應正確商品
+  const dInv=document.getElementById('d-inv-list');
+  const mInv=document.getElementById('inv-list');
+  if(dInv)dInv.innerHTML=html;
+  if(mInv)mInv.innerHTML=html;
 }
 
 // 商品庫存查看（點選卡片觸發）
@@ -3932,7 +3922,7 @@ function openStockView(id,e){
   openModal('modal-stock-view');
 }
 function saveStockViewEdit(id){
-  const p=products.find(x=>Number(x.id)===Number(id));if(!p)return;
+  const p=products.find(x=>x.id===id);if(!p)return;
   if(p.skus?.length)p.skus.forEach((s,i)=>{const v=parseInt(document.getElementById('sv-si-'+i)?.value)||0;s.stock=Math.max(0,v);});
   else p.stock=Math.max(0,parseInt(document.getElementById('sv-si-0')?.value)||0);
   save();closeModal('modal-stock-view');renderInventory();renderDashboard();
@@ -3941,7 +3931,7 @@ function saveStockViewEdit(id){
 
 // SKU STOCK EDITOR（保留供其他功能用）
 function openSkuStockEditor(id){
-  const p=products.find(x=>Number(x.id)===Number(id));if(!p)return;
+  const p=products.find(x=>x.id===id);if(!p)return;
   editingSkuProductId=id;
   document.getElementById('sku-stock-title').textContent=p.name+(p.skuCode?' ['+p.skuCode+']':'')+'  調整庫存';
   document.getElementById('sku-stock-content').innerHTML=p.skus?.length
@@ -3950,7 +3940,7 @@ function openSkuStockEditor(id){
   openModal('modal-sku-stock');
 }
 function saveSkuStock(){
-  const p=products.find(x=>Number(x.id)===Number(editingSkuProductId));if(!p)return;
+  const p=products.find(x=>x.id===editingSkuProductId);if(!p)return;
   if(p.skus?.length)p.skus.forEach((s,i)=>{const v=parseInt(document.getElementById('ssi-'+i)?.value)||0;s.stock=Math.max(0,v);});
   else p.stock=Math.max(0,parseInt(document.getElementById('ssi-0')?.value)||0);
   save();closeModal('modal-sku-stock');renderInventory();renderDashboard();
@@ -4025,7 +4015,7 @@ function saveProduct(){
     price:parseInt(document.getElementById('f-price').value)||0,
     cost:parseInt(document.getElementById('f-cost').value)||0,colors,sizes};
   if(editingProductId){
-    const p=products.find(x=>Number(x.id)===Number(editingProductId));
+    const p=products.find(x=>x.id===editingProductId);
     const oldSkus=p.skus||[];
     const newSkus=[];
     for(const c of cs)for(const sz of ss){const old=oldSkus.find(s=>s.color===c&&s.size===sz);newSkus.push({color:c,size:sz,stock:old?old.stock:0});}
@@ -4473,7 +4463,7 @@ function togglePOQuickSku(label, productId){
   const productName=nameEl?.value||'';
   const cost=parseInt(costEl?.value||0)||0;
   const vendorSku=(vendorSkuEl?.value||'').toUpperCase().trim();
-  const p=products.find(x=>Number(x.id)===Number(productId))||products.find(x=>x.skuCode&&x.skuCode.toUpperCase()===skuCode);
+  const p=products.find(x=>x.id===productId)||products.find(x=>x.skuCode&&x.skuCode.toUpperCase()===skuCode);
 
   const targetName=productName||(p?p.name:'');
   const targetSku=skuCode;
@@ -4925,7 +4915,7 @@ function deleteCategory(i){
   categories.splice(i,1);save();renderCatListUI();
 }
 function deleteProduct(id){
-  products=products.filter(p=>Number(p.id)!==Number(id));save();renderInventory();renderProducts();renderDashboard();
+  products=products.filter(p=>p.id!==id);save();renderInventory();renderProducts();renderDashboard();
   showNotif('已刪除商品','var(--gn)');
 }
 
@@ -5511,14 +5501,14 @@ function confirmReturn(){
   });
   // 還原退貨品項庫存
   returnItems.forEach(item=>{
-    const p=products.find(x=>Number(x.id)===Number(item.id));if(!p)return;
+    const p=products.find(x=>x.id===item.id);if(!p)return;
     if(p.skus?.length){const sk=p.skus.find(s=>s.color===item.color&&s.size===item.size);if(sk)sk.stock+=item.returnQty;}
     else p.stock=(p.stock||0)+item.returnQty;
   });
   // 處理換貨品項（扣換貨品庫存）
   const validExchange=(exchangeItems||[]).filter(x=>x&&x.productId&&x.qty>0);
   validExchange.forEach(ex=>{
-    const p=products.find(x=>Number(x.id)===Number(ex.productId));if(!p)return;
+    const p=products.find(x=>x.id===ex.productId);if(!p)return;
     if(ex.skuDesc){
       const parts=ex.skuDesc.split(/[/,]+/);
       const color=(parts[0]||'').trim(),size=(parts[1]||'').trim();
@@ -5536,7 +5526,7 @@ function confirmReturn(){
     amount:customAmt,
     refundMethod,
     note,
-    exchangeItems:validExchange.map(ex=>{const p=products.find(x=>Number(x.id)===Number(ex.productId));return{productName:p?.name||'',skuDesc:ex.skuDesc,qty:ex.qty};})
+    exchangeItems:validExchange.map(ex=>{const p=products.find(x=>x.id===ex.productId);return{productName:p?.name||'',skuDesc:ex.skuDesc,qty:ex.qty};})
   });
   // 處理會員
   if(returnOrderData.memberId){
@@ -6465,7 +6455,7 @@ let editingExpenseId=null;
 // 加購優惠（商品設有 addOnPrice 即為加購品）
 // ============================================================
 function isAddOnProduct(productId){
-  const p=products.find(x=>Number(x.id)===Number(productId));
+  const p=products.find(x=>x.id===productId);
   return p&&p.addOnPrice!=null&&p.addOnPrice!==''&&!isNaN(p.addOnPrice);
 }
 
@@ -6475,7 +6465,7 @@ function calcAddOnDiscount(){
   if(!hasRegular)return 0;
   let disc=0;
   cart.forEach(c=>{
-    const p=products.find(x=>Number(x.id)===Number(c.id));
+    const p=products.find(x=>x.id===c.id);
     if(p&&p.addOnPrice!=null&&p.addOnPrice!==''&&!isNaN(p.addOnPrice)){
       const saving=(c.price-Number(p.addOnPrice))*c.qty;
       if(saving>0)disc+=saving;
@@ -6640,7 +6630,7 @@ function renderAccounting(){
   let totalCost=0;
   filtered.forEach(o=>{
     o.items.forEach(item=>{
-      const p=products.find(x=>Number(x.id)===Number(item.id)||x.name===item.name);
+      const p=products.find(x=>x.id===item.id||x.name===item.name);
       if(p)totalCost+=(p.cost||0)*item.qty;
     });
   });
@@ -6735,7 +6725,7 @@ function renderAccounting(){
   const productStats={};
   filtered.forEach(o=>{
     o.items.forEach(item=>{
-      const p=products.find(x=>Number(x.id)===Number(item.id)||x.name===item.name);
+      const p=products.find(x=>x.id===item.id||x.name===item.name);
       const key=item.name;
       if(!productStats[key])productStats[key]={name:item.name,qty:0,revenue:0,cost:0};
       productStats[key].qty+=item.qty;
@@ -6875,11 +6865,7 @@ async function loadFromFirebase(){
   }
 
   // 雲端有資料 → 直接載入，覆蓋本地
-  if(data.products){
-    products=data.products;
-    (function(){products.forEach(p=>{if(p.id!==undefined)p.id=Number(p.id);});const seen=new Set();let mx=0;products.forEach(p=>{if(p.id>mx)mx=p.id;});products.forEach(p=>{if(seen.has(p.id)){mx++;p.id=mx;}seen.add(p.id);});if(mx>=nextId){nextId=mx+1;localStorage.setItem(KEYS.nextId,String(nextId));}})();
-    localStorage.setItem(KEYS.products,JSON.stringify(products));
-  }
+  if(data.products){products=data.products;localStorage.setItem(KEYS.products,JSON.stringify(products));}
   if(data.orders){orders=data.orders;localStorage.setItem(KEYS.orders,JSON.stringify(orders));}
   if(data.members){members=data.members;localStorage.setItem(KEYS.members,JSON.stringify(members));}
   if(data.promos){promos=data.promos;localStorage.setItem(KEYS.promos,JSON.stringify(promos));}
