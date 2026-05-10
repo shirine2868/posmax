@@ -1594,7 +1594,7 @@ html,body{height:100%;width:100%;overflow:hidden;font-family:'Noto Sans TC',sans
       <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:6px;margin-bottom:6px">
         <div>
           <div style="font-size:10px;color:var(--tx3);margin-bottom:3px">貨號（比對商品）</div>
-          <input class="form-input" id="po-quick-sku" placeholder="貨號" style="padding:7px 9px;font-size:12px;font-family:'JetBrains Mono',monospace;text-transform:uppercase;width:100%;box-sizing:border-box" oninput="onPOQuickSku(this.value)" onkeydown="if(event.key==='Enter'){event.preventDefault();document.getElementById('po-quick-vendor-sku').focus();}else if(event.key==='Backspace'&&!this.value){event.preventDefault();poQuickBackspaceSelect(false);}">
+          <input class="form-input" id="po-quick-sku" placeholder="貨號" style="padding:7px 9px;font-size:12px;font-family:'JetBrains Mono',monospace;text-transform:uppercase;width:100%;box-sizing:border-box" onblur="onPOQuickSku(this.value)" onkeydown="if(event.key==='Enter'){event.preventDefault();onPOQuickSku(this.value);document.getElementById('po-quick-vendor-sku').focus();}else if(event.key==='Backspace'&&!this.value){event.preventDefault();poQuickBackspaceSelect(false);}">
         </div>
         <div>
           <div style="font-size:10px;color:var(--tx3);margin-bottom:3px">條碼</div>
@@ -2168,7 +2168,7 @@ function dOpenPOModal(){
       <div style="font-size:10px;font-weight:700;color:var(--ac);margin-bottom:8px">⚡ 快速新增品項</div>
       <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:6px;margin-bottom:6px">
         <div><div style="font-size:10px;color:var(--tx3);margin-bottom:3px">貨號（比對商品）</div>
-          <input class="form-input" id="d-po-quick-sku" placeholder="貨號" style="padding:7px 9px;font-size:12px;font-family:'JetBrains Mono',monospace;text-transform:uppercase;width:100%;box-sizing:border-box" oninput="dOnPOQuickSku(this.value)" onkeydown="if(event.key==='Enter'){event.preventDefault();poQuickEnterSelect(true);}else if(event.key==='Backspace'&&!this.value){event.preventDefault();poQuickBackspaceSelect(true);}"></div>
+          <input class="form-input" id="d-po-quick-sku" placeholder="貨號" style="padding:7px 9px;font-size:12px;font-family:'JetBrains Mono',monospace;text-transform:uppercase;width:100%;box-sizing:border-box" onblur="dOnPOQuickSku(this.value)" onkeydown="if(event.key==='Enter'){event.preventDefault();dOnPOQuickSku(this.value);poQuickEnterSelect(true);}else if(event.key==='Backspace'&&!this.value){event.preventDefault();poQuickBackspaceSelect(true);}"></div>
         <div><div style="font-size:10px;color:var(--tx3);margin-bottom:3px">條碼</div>
           <input class="form-input" id="d-po-quick-barcode" placeholder="條碼" style="padding:7px 9px;font-size:12px;font-family:'JetBrains Mono',monospace;text-transform:uppercase;width:100%;box-sizing:border-box"></div>
         <div><div style="font-size:10px;color:var(--tx3);margin-bottom:3px">品名</div>
@@ -2211,6 +2211,12 @@ function dClosePOModal(){
 }
 function dOnPOQuickSku(val){
   const upper=(val||'').toUpperCase().trim();
+  if(!upper){// 清空時重置
+    ['d-po-quick-barcode','d-po-quick-name','d-po-quick-cost'].forEach(id=>{const e=document.getElementById(id);if(e)e.value='';});
+    const dc=document.getElementById('d-po-quick-sku-chips');if(dc)dc.innerHTML='';
+    return;
+  }
+  // 精確比對貨號（完全一致）
   const p=products.find(x=>x.skuCode&&x.skuCode.toUpperCase()===upper);
   if(p){
     const n=document.getElementById('d-po-quick-name');if(n&&!n.value)n.value=p.name;
@@ -4474,6 +4480,10 @@ function onPOQuickVendorSku(val){
 // 輸入系統貨號：自動帶入品名、成本、顯示規格快選
 function onPOQuickSku(val){
   const upper=val.toUpperCase().trim();
+  if(!upper){
+    ['po-quick-vendor-sku','po-quick-name','po-quick-cost'].forEach(id=>{const e=document.getElementById(id);if(e)e.value='';});
+    setEl(['po-quick-sku-chips'],'',true);return;
+  }
   const p=products.find(x=>x.skuCode&&x.skuCode.toUpperCase()===upper);
   if(p){
     const nameEl=document.getElementById('po-quick-name');
