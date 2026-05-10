@@ -2232,7 +2232,14 @@ function dAddPOItem(){
   if(desktopPendingSkus.length>0){
     // 把暫選規格全部加入
     desktopPendingSkus.forEach(ps=>{
-      poItems.push({vendorSku,skuCode:ps.skuCode||skuCode,productName:productName||(p?p.name:''),skuDesc:ps.label,qty:ps.qty||1,cost:cost||(p?p.cost:0)});
+      const _sku=ps.skuCode||skuCode;
+      const _existIdx=poItems.findIndex(x=>x.skuCode===_sku&&x.skuDesc===ps.label);
+      if(_existIdx>=0){
+        // 相同規格已存在，累加數量
+        poItems[_existIdx].qty=(poItems[_existIdx].qty||1)+(ps.qty||1);
+      }else{
+        poItems.push({vendorSku,skuCode:_sku,productName:productName||(p?p.name:''),skuDesc:ps.label,qty:ps.qty||1,cost:cost||(p?p.cost:0)});
+      }
     });
     desktopPendingSkus=[];
   }else{
@@ -4671,10 +4678,10 @@ function togglePOQuickSku(label, productId){
   // 只移除 skuDesc 為空字串（不是undefined）的同商品空行
   poItems=poItems.filter(x=>!(x.skuDesc===''&&(x.productName===targetName||x.skuCode===finalSkuCode)));
 
-  // 若此規格已在清單，則移除（取消選取）
+  // 若此規格已在清單，累加數量；再按一次則數量 -1，歸零時移除
   const existIdx=poItems.findIndex(x=>x.skuCode===finalSkuCode&&x.skuDesc===label);
   if(existIdx>=0){
-    poItems.splice(existIdx,1);
+    poItems[existIdx].qty=(poItems[existIdx].qty||1)+1;
   }else{
     // 新增到清單
     poItems.push({
@@ -4761,7 +4768,13 @@ function addPOItemFromQuick(){
   const productName=(document.getElementById('po-quick-name')?.value||'').trim();
   const cost=parseInt(document.getElementById('po-quick-cost')?.value||0)||0;
   if(!productName&&!skuCode){alert('請至少輸入品名或貨號');return;}
-  poItems.push({vendorSku,skuCode,productName,skuDesc:'',qty:1,cost});
+  // 相同貨號+規格已存在則累加數量
+  const _mExist=poItems.findIndex(x=>x.skuCode===skuCode&&x.skuDesc==='');
+  if(_mExist>=0){
+    poItems[_mExist].qty=(poItems[_mExist].qty||1)+1;
+  }else{
+    poItems.push({vendorSku,skuCode,productName,skuDesc:'',qty:1,cost});
+  }
   renderPOItems();
   clearPOQuick();
   setTimeout(()=>{const el=document.getElementById('po-quick-sku');if(el)el.focus();},50);
