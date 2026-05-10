@@ -2350,8 +2350,20 @@ function dSavePO(status){
         p=products[products.length-1];
       }
       if(!p)return;
-      if(p.skus?.length)p.skus.forEach(sk=>sk.stock+=(item.qty||1));
-      else p.stock=(p.stock||0)+(item.qty||1);
+      if(p.skus?.length){
+        if(item.skuDesc){
+          // 有指定規格 → 只更新對應的 sku
+          const _parts=item.skuDesc.split('/');
+          const _color=_parts[0]?.trim()||'';
+          const _size=_parts[1]?.trim()||'F';
+          const _sk=p.skus.find(s=>s.color===_color&&(s.size===_size||(!_size&&s.size==='F')));
+          if(_sk)_sk.stock+=item.qty||1;
+          else p.skus.push({color:_color,size:_size,stock:item.qty||1});
+        }else{
+          // 無指定規格 → 平均加到所有 sku（舊資料相容）
+          p.skus.forEach(sk=>sk.stock+=(item.qty||1));
+        }
+      }else p.stock=(p.stock||0)+(item.qty||1);
     });
   }
   save();dClosePOModal();
