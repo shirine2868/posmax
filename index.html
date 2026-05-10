@@ -2286,17 +2286,17 @@ function dRenderPOItems(){
       <td style="padding:5px 4px;font-size:11px;color:var(--tx2);text-align:center">${item.skuDesc||'—'}</td>
       <td style="padding:5px 4px;text-align:center"><input type="number" value="${item.qty||1}" min="1"
   id="d-po-qty-${i}"
-  oninput="poItems[${i}].qty=parseInt(this.value)||1;dUpdatePOCostSummary()"
+  oninput="poItems[${i}].qty=parseInt(this.value)||1;dUpdateSubtotal(${i});dUpdatePOCostSummary()"
   onclick="this.select()"
   onkeydown="poListKeyNav(event,'qty',${i})"
   style="width:46px;background:var(--sf);border:1px solid var(--bd);border-radius:5px;padding:3px 4px;color:var(--tx);font-size:11px;text-align:center"></td>
       <td style="padding:5px 4px;text-align:center"><input type="number" value="${item.cost||0}" min="0"
   id="d-po-cost-${i}"
-  oninput="poItems[${i}].cost=parseInt(this.value)||0;dUpdatePOCostSummary()"
+  oninput="poItems[${i}].cost=parseInt(this.value)||0;dUpdateSubtotal(${i});dUpdatePOCostSummary()"
   onclick="this.select()"
   onkeydown="poListKeyNav(event,'cost',${i})"
   style="width:58px;background:var(--sf);border:1px solid var(--bd);border-radius:5px;padding:3px 4px;color:var(--tx);font-size:11px;text-align:center"></td>
-      <td style="padding:5px 4px;text-align:right;font-size:11px;color:var(--gn)">$${((item.cost||0)*(item.qty||1)).toLocaleString()}</td>
+      <td style="padding:5px 4px;text-align:right;font-size:11px;color:var(--gn)" id="d-po-sub-${i}">$${((item.cost||0)*(item.qty||1)).toLocaleString()}</td>
       <td><button onclick="poItems.splice(${i},1);dRenderPOItems();dUpdatePOCostSummary()" style="background:none;border:none;color:var(--rd);cursor:pointer;font-size:14px;padding:0 2px">×</button></td>
     </tr>`).join('')}</tbody>
     <tfoot><tr style="border-top:2px solid var(--bd)">
@@ -3591,11 +3591,26 @@ function calcPromoDiscount(){
     let disc=0;
     if(pr.type==='qty_tiers')disc=calcTierDisc(pr.tiers||[],eligQty);
     else if(pr.type==='qty_price'&&eligQty>=pr.minQty)disc=pr.discPerItem;
-    else if(pr.type==='qty_fixprice'&&eligQty>=pr.fixQty){
-      // 滿件特價：實際收費 = fixPrice + 超出件數 * 單件原價均攤
-      const unitPrice=eligSub/eligQty;
-      const fixTotal=pr.fixPrice+(eligQty-pr.fixQty)*unitPrice;
-      disc=Math.round(Math.max(0,eligSub-fixTotal));
+    else if(pr.type==='qty_fixprice'){
+      // 滿件特價（多段累加）
+      const tiers=(pr.tiers&&pr.tiers.length)?pr.tiers:[{minQty:pr.fixQty||3,disc:pr.fixPrice||1000}];
+      // 找最大符合的段
+      const sorted=[...tiers].filter(t=>t.minQty>0&&t.disc>0).sort((a,b)=>b.minQty-a.minQty);
+      if(sorted.length&&eligQty>=sorted[sorted.length-1].minQty){
+        let remain=eligQty, totalFixed=0;
+        // 貪婪累加：盡量用最大段
+        for(const tier of sorted){
+          if(remain>=tier.minQty){
+            const groups=Math.floor(remain/tier.minQty);
+            totalFixed+=groups*tier.disc;
+            remain-=groups*tier.minQty;
+          }
+        }
+        // 剩餘件數按原價均攤
+        const unitPrice=eligSub/eligQty;
+        totalFixed+=remain*unitPrice;
+        disc=Math.round(Math.max(0,eligSub-totalFixed));
+      }
     }
     else if(pr.type==='amount_off'&&eligSub>=pr.minAmount)disc=pr.offAmount;
     else if(pr.type==='amount_pct'&&eligSub>=pr.minAmount)disc=Math.round(eligSub*(1-pr.pct/100));
@@ -3607,10 +3622,18 @@ function calcPromoDiscount(){
     let disc=0;
     if(pr.type==='qty_tiers')disc=calcTierDisc(pr.tiers||[],totalQty);
     else if(pr.type==='qty_price'&&totalQty>=pr.minQty)disc=pr.discPerItem;
-    else if(pr.type==='qty_fixprice'&&totalQty>=pr.fixQty){
-      const unitPrice=remain/totalQty;
-      const fixTotal=pr.fixPrice+(totalQty-pr.fixQty)*unitPrice;
-      disc=Math.round(Math.max(0,remain-fixTotal));
+    else if(pr.type==='qty_fixprice'){
+      const tiers2=(pr.tiers&&pr.tiers.length)?pr.tiers:[{minQty:pr.fixQty||3,disc:pr.fixPrice||1000}];
+      const sorted2=[...tiers2].filter(t=>t.minQty>0&&t.disc>0).sort((a,b)=>b.minQty-a.minQty);
+      if(sorted2.length&&totalQty>=sorted2[sorted2.length-1].minQty){
+        let rem2=totalQty, totalFixed2=0;
+        for(const tier of sorted2){
+          if(rem2>=tier.minQty){const g=Math.floor(rem2/tier.minQty);totalFixed2+=g*tier.disc;rem2-=g*tier.minQty;}
+        }
+        const up2=remain/totalQty;
+        totalFixed2+=rem2*up2;
+        disc=Math.round(Math.max(0,remain-totalFixed2));
+      }
     }
     else if(pr.type==='amount_off'&&remain>=pr.minAmount)disc=pr.offAmount;
     else if(pr.type==='amount_pct'&&remain>=pr.minAmount)disc=Math.round(remain*(1-pr.pct/100));
@@ -4202,10 +4225,14 @@ function onPromoScopeChange(prefill=null){
 }
 function renderTierRows(){
   const el=document.getElementById('qty-tiers-container');if(!el)return;
+  const curType=document.getElementById('fp-type')?.value||'qty_tiers';
+  const isFixPrice=curType==='qty_fixprice';
+  const label2=isFixPrice?'特價總金額$':'折扣$';
+  const ph2=isFixPrice?'特價$':'折扣$';
   el.innerHTML=editingTiers.map((t,i)=>`<div class="qty-tier-row">
-    <input class="form-input" type="number" placeholder="件數" value="${t.minQty||''}" oninput="editingTiers[${i}].minQty=parseInt(this.value)||0" style="flex:1">
-    <span style="color:var(--tx3);font-size:11px;white-space:nowrap">件折</span>
-    <input class="form-input" type="number" placeholder="折扣$" value="${t.disc||''}" oninput="editingTiers[${i}].disc=parseInt(this.value)||0" style="flex:1">
+    <input class="form-input" type="number" placeholder="件數" value="${t.minQty||''}" onclick="this.select()" oninput="editingTiers[${i}].minQty=parseInt(this.value)||0" style="flex:1">
+    <span style="color:var(--tx3);font-size:11px;white-space:nowrap">${isFixPrice?'件特價':'件折'}</span>
+    <input class="form-input" type="number" placeholder="${ph2}" value="${t.disc||''}" onclick="this.select()" oninput="editingTiers[${i}].disc=parseInt(this.value)||0" style="flex:1">
     <button class="tier-del-btn" onclick="removeTier(${i})">×</button>
   </div>`).join('');
 }
@@ -4215,10 +4242,10 @@ function onPromoTypeChange(prefill=null){
   const type=document.getElementById('fp-type').value;
   let html='';
   if(type==='qty_tiers')html=`<div class="form-group"><label class="form-label">件數折扣條件（多段）</label><div class="qty-tiers" id="qty-tiers-container"></div><button class="add-tier-btn" onclick="addTier()">＋ 新增段</button></div>`;
-  else if(type==='qty_price')html=`<div class="form-row"><div class="form-group"><label class="form-label">最少件數</label><input class="form-input" id="fp-min-qty" type="number" value="${prefill?.minQty||''}"></div><div class="form-group"><label class="form-label">折扣 ($)</label><input class="form-input" id="fp-disc-per" type="number" value="${prefill?.discPerItem||''}"></div></div>`;
-  else if(type==='qty_fixprice')html=`<div class="form-row"><div class="form-group"><label class="form-label">件數</label><input class="form-input" id="fp-fix-qty" type="number" placeholder="例如 3" value="${prefill?.fixQty||''}"></div><div class="form-group"><label class="form-label">特價總金額 ($)</label><input class="form-input" id="fp-fix-price" type="number" placeholder="例如 1000" value="${prefill?.fixPrice||''}"></div></div><div style="font-size:11px;color:var(--tx2);margin-top:-4px">滿 N 件只需付固定總價，超過件數依比例計算</div>`;
-  else if(type==='amount_off')html=`<div class="form-row"><div class="form-group"><label class="form-label">消費滿 ($)</label><input class="form-input" id="fp-min-amt" type="number" value="${prefill?.minAmount||''}"></div><div class="form-group"><label class="form-label">折抵 ($)</label><input class="form-input" id="fp-off-amt" type="number" value="${prefill?.offAmount||''}"></div></div>`;
-  else if(type==='amount_pct')html=`<div class="form-row"><div class="form-group"><label class="form-label">消費滿 ($)</label><input class="form-input" id="fp-min-amt" type="number" value="${prefill?.minAmount||''}"></div><div class="form-group"><label class="form-label">折扣（如85=85折）</label><input class="form-input" id="fp-pct" type="number" value="${prefill?.pct||''}"></div></div>`;
+  else if(type==='qty_price')html=`<div class="form-row"><div class="form-group"><label class="form-label">最少件數</label><input class="form-input" id="fp-min-qty" type="number" onclick="this.select()" value="${prefill?.minQty||''}"></div><div class="form-group"><label class="form-label">折扣 ($)</label><input class="form-input" id="fp-disc-per" type="number" onclick="this.select()" value="${prefill?.discPerItem||''}"></div></div>`;
+  else if(type==='qty_fixprice')html=`<div class="form-row"><div class="form-group"><label class="form-label">件數</label><input class="form-input" id="fp-fix-qty" type="number" onclick="this.select()" placeholder="例如 3" value="${prefill?.fixQty||''}"></div><div class="form-group"><label class="form-label">特價總金額 ($)</label><input class="form-input" id="fp-fix-price" type="number" onclick="this.select()" placeholder="例如 1000" value="${prefill?.fixPrice||''}"></div></div><div style="font-size:11px;color:var(--tx2);margin-top:-4px">滿 N 件只需付固定總價，超過件數依比例計算</div>`;
+  else if(type==='amount_off')html=`<div class="form-row"><div class="form-group"><label class="form-label">消費滿 ($)</label><input class="form-input" id="fp-min-amt" type="number" onclick="this.select()" value="${prefill?.minAmount||''}"></div><div class="form-group"><label class="form-label">折抵 ($)</label><input class="form-input" id="fp-off-amt" type="number" onclick="this.select()" value="${prefill?.offAmount||''}"></div></div>`;
+  else if(type==='amount_pct')html=`<div class="form-row"><div class="form-group"><label class="form-label">消費滿 ($)</label><input class="form-input" id="fp-min-amt" type="number" onclick="this.select()" value="${prefill?.minAmount||''}"></div><div class="form-group"><label class="form-label">折扣（如85=85折）</label><input class="form-input" id="fp-pct" type="number" onclick="this.select()" value="${prefill?.pct||''}"></div></div>`;
   document.getElementById('promo-fields').innerHTML=html;
   if(type==='qty_tiers')renderTierRows();
 }
@@ -4231,7 +4258,10 @@ function promoScopeLabel(pr){
 function promoTypeLabel(pr){
   if(pr.type==='qty_tiers'){const t=[...(pr.tiers||[])].sort((a,b)=>a.minQty-b.minQty);return t.map(x=>`滿${x.minQty}件折$${x.disc}`).join('、');}
   if(pr.type==='qty_price')return`滿${pr.minQty}件折$${pr.discPerItem}`;
-  if(pr.type==='qty_fixprice')return`滿${pr.fixQty}件特價$${pr.fixPrice}`;
+  if(pr.type==='qty_fixprice'){
+    if(pr.tiers&&pr.tiers.length>1)return pr.tiers.map(t=>`${t.minQty}件$${t.disc}`).join('、');
+    return`滿${pr.fixQty||pr.tiers?.[0]?.minQty}件特價$${pr.fixPrice||pr.tiers?.[0]?.disc}`;
+  }
   if(pr.type==='amount_off')return`滿$${pr.minAmount}折$${pr.offAmount}`;
   if(pr.type==='amount_pct')return`滿$${pr.minAmount}打${pr.pct}折`;
   return'';
@@ -4264,17 +4294,24 @@ function openAddPromo(){
   document.getElementById('fp-scope').value='all';
   document.getElementById('fp-scope-detail').innerHTML='';
   onPromoTypeChange();
+  closeModal('modal-promo-manager');
   openModal('modal-promo');
 }
 function openEditPromo(id){
   const pr=promos.find(x=>x.id===id);if(!pr)return;
   editingPromoId=id;
-  editingTiers=pr.tiers?pr.tiers.map(t=>({...t})):[{minQty:3,disc:170}];
+  if(pr.type==='qty_fixprice'){
+    // qty_fixprice 用 tiers 格式存多段資料
+    editingTiers=pr.tiers?.length?pr.tiers.map(t=>({...t})):[{minQty:pr.fixQty||3,disc:pr.fixPrice||1000}];
+  }else{
+    editingTiers=pr.tiers?pr.tiers.map(t=>({...t})):[{minQty:3,disc:170}];
+  }
   document.getElementById('promo-modal-title').textContent='編輯折扣優惠';
   document.getElementById('fp-name').value=pr.name;
   document.getElementById('fp-type').value=pr.type;
   document.getElementById('fp-scope').value=pr.scope||'all';
   onPromoScopeChange(pr);onPromoTypeChange(pr);
+  closeModal('modal-promo-manager');
   openModal('modal-promo');
 }
 function savePromo(){
@@ -4288,12 +4325,12 @@ function savePromo(){
   let data={name,type,enabled:true,scope,cats,skuCodes};
   if(type==='qty_tiers'){const tiers=editingTiers.filter(t=>t.minQty>0&&t.disc>0);if(!tiers.length){alert('請至少設定一組條件');return;}Object.assign(data,{tiers});}
   else if(type==='qty_price'){const minQty=parseInt(document.getElementById('fp-min-qty')?.value)||0;const discPerItem=parseInt(document.getElementById('fp-disc-per')?.value)||0;if(!minQty||!discPerItem){alert('請填寫完整條件');return;}Object.assign(data,{minQty,discPerItem});}
-  else if(type==='qty_fixprice'){const fixQty=parseInt(document.getElementById('fp-fix-qty')?.value)||0;const fixPrice=parseInt(document.getElementById('fp-fix-price')?.value)||0;if(!fixQty||!fixPrice){alert('請填寫完整條件');return;}Object.assign(data,{fixQty,fixPrice});}
+  else if(type==='qty_fixprice'){const tiers=editingTiers.filter(t=>t.minQty>0&&t.disc>0);if(!tiers.length){alert('請至少設定一組條件');return;}Object.assign(data,{tiers,fixQty:tiers[0].minQty,fixPrice:tiers[0].disc});}
   else if(type==='amount_off'){const minAmount=parseInt(document.getElementById('fp-min-amt')?.value)||0;const offAmount=parseInt(document.getElementById('fp-off-amt')?.value)||0;if(!minAmount||!offAmount){alert('請填寫完整條件');return;}Object.assign(data,{minAmount,offAmount});}
   else if(type==='amount_pct'){const minAmount=parseInt(document.getElementById('fp-min-amt')?.value)||0;const pct=parseInt(document.getElementById('fp-pct')?.value)||0;if(!minAmount||!pct){alert('請填寫完整條件');return;}Object.assign(data,{minAmount,pct});}
   if(editingPromoId)Object.assign(promos.find(x=>x.id===editingPromoId),data);
   else promos.push({id:nextPromoId++,...data});
-  save();closeModal('modal-promo');renderPromos();updateTotals();
+  save();closeModal('modal-promo');openPromoManager();updateTotals();
 }
 
 // ============================================================
@@ -4612,6 +4649,13 @@ function renderPOQuickChips(p){
 }
 
 // 連續點選規格：直接新增到 poItems
+function dUpdateSubtotal(i){
+  const sub=document.getElementById('d-po-sub-'+i);
+  if(sub&&poItems[i]){
+    const val=(poItems[i].cost||0)*(poItems[i].qty||1);
+    sub.textContent='$'+val.toLocaleString();
+  }
+}
 function poListKeyNav(e, type, idx){
   // type: 'qty' or 'cost', idx: 行號
   if(e.key==='Enter'){
