@@ -662,7 +662,7 @@ html,body{height:100%;width:100%;overflow:hidden;font-family:'Noto Sans TC',sans
 
 <!-- 桌面版採購單 Modal -->
 <div id="d-modal-po" style="display:none;position:fixed;inset:0;z-index:9998;background:rgba(0,0,0,.6);align-items:flex-start;justify-content:center;padding:40px 20px;box-sizing:border-box;overflow-y:auto">
-  <div style="background:var(--sf);border-radius:14px;width:100%;max-width:640px;display:flex;flex-direction:column;max-height:calc(100vh - 80px)" onclick="event.stopPropagation()">
+  <div style="background:var(--sf);border-radius:14px;width:100%;max-width:860px;display:flex;flex-direction:column;max-height:calc(100vh - 80px)" onclick="event.stopPropagation()">
     <div style="padding:20px 24px 12px;border-bottom:1px solid var(--bd);flex-shrink:0">
       <h3 id="d-po-modal-title" style="margin:0;font-size:16px;font-weight:700">新增採購單</h3>
     </div>
@@ -1591,26 +1591,29 @@ html,body{height:100%;width:100%;overflow:hidden;font-family:'Noto Sans TC',sans
     <!-- 快速新增品項 -->
     <div id="po-quick-section" style="background:var(--sf2);border-radius:9px;padding:10px 12px;margin-bottom:10px">
       <div style="font-size:10px;font-weight:700;color:var(--ac);margin-bottom:8px">⚡ 快速新增品項</div>
-      <div style="display:flex;gap:6px;margin-bottom:6px">
-        <div style="flex:1.2">
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:6px;margin-bottom:6px">
+        <div>
           <div style="font-size:10px;color:var(--tx3);margin-bottom:3px">貨號（比對商品）</div>
-          <input class="form-input" id="po-quick-sku" placeholder="貨號" style="padding:7px 9px;font-size:12px;font-family:'JetBrains Mono',monospace;text-transform:uppercase" oninput="onPOQuickSku(this.value)" onkeydown="if(event.key==='Enter'){event.preventDefault();poQuickEnterSelect(false);}else if(event.key==='Backspace'&&!this.value){event.preventDefault();poQuickBackspaceSelect(false);}">
+          <input class="form-input" id="po-quick-sku" placeholder="貨號" style="padding:7px 9px;font-size:12px;font-family:'JetBrains Mono',monospace;text-transform:uppercase;width:100%;box-sizing:border-box" oninput="onPOQuickSku(this.value)" onkeydown="if(event.key==='Enter'){event.preventDefault();document.getElementById('po-quick-vendor-sku').focus();}else if(event.key==='Backspace'&&!this.value){event.preventDefault();poQuickBackspaceSelect(false);}">
         </div>
-        <div style="flex:1">
+        <div>
           <div style="font-size:10px;color:var(--tx3);margin-bottom:3px">條碼</div>
-          <input class="form-input" id="po-quick-vendor-sku" placeholder="條碼" style="padding:7px 9px;font-size:12px;font-family:'JetBrains Mono',monospace;text-transform:uppercase" oninput="onPOQuickVendorSku(this.value)">
+          <input class="form-input" id="po-quick-vendor-sku" placeholder="條碼" style="padding:7px 9px;font-size:12px;font-family:'JetBrains Mono',monospace;text-transform:uppercase;width:100%;box-sizing:border-box" oninput="onPOQuickVendorSku(this.value)" onkeydown="if(event.key==='Enter'){event.preventDefault();document.getElementById('po-quick-name').focus();}">
         </div>
-        <div style="flex:1.5">
+        <div>
           <div style="font-size:10px;color:var(--tx3);margin-bottom:3px">品名</div>
-          <input class="form-input" id="po-quick-name" placeholder="品名" style="padding:7px 9px;font-size:12px">
+          <input class="form-input" id="po-quick-name" placeholder="品名" style="padding:7px 9px;font-size:12px;width:100%;box-sizing:border-box" onkeydown="if(event.key==='Enter'){event.preventDefault();document.getElementById('po-quick-cost').focus();}">
+        </div>
+        <div>
+          <div style="font-size:10px;color:var(--tx3);margin-bottom:3px">單件成本 ($)</div>
+          <input class="form-input" type="number" id="po-quick-cost" placeholder="成本$" style="padding:7px 9px;font-size:12px;width:100%;box-sizing:border-box" onkeydown="if(event.key==='Enter'){event.preventDefault();addPOItemFromQuick();}">
         </div>
       </div>
       <!-- 規格快選區（連續多選） -->
       <div id="po-quick-sku-chips" style="margin-bottom:6px"></div>
       <!-- 已選規格列表（inline table） -->
       <div id="po-quick-selected" style="margin-bottom:6px"></div>
-      <div style="display:flex;gap:6px;align-items:center">
-        <input class="form-input" type="number" id="po-quick-cost" placeholder="單件成本$" style="flex:1;padding:7px 9px;font-size:12px" onkeydown="if(event.key==='Enter'){event.preventDefault();addPOItemFromQuick();}">
+      <div style="display:flex;justify-content:flex-end">
         <button class="btn btn-primary btn-sm" onclick="addPOItemFromQuick()">＋ 加入清單</button>
       </div>
     </div>
@@ -1619,7 +1622,7 @@ html,body{height:100%;width:100%;overflow:hidden;font-family:'Noto Sans TC',sans
     <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
       <div class="sec-label" style="margin:0;flex:1">採購品項明細</div>
     </div>
-    <div id="po-items-list" style="max-height:28vh;overflow-y:auto;margin-bottom:8px"></div>
+    <div id="po-items-list" style="min-height:120px;margin-bottom:8px"></div>
 
     <!-- 費用摘要 -->
     <div style="background:var(--sf2);border-radius:8px;padding:9px 12px;font-size:12px">
@@ -2163,22 +2166,23 @@ function dOpenPOModal(){
     <div style="margin-bottom:10px"><label class="form-label">備註</label><input class="form-input" id="d-po-note" placeholder="備註說明"></div>
     <div style="background:var(--sf2);border-radius:9px;padding:10px 12px;margin-bottom:10px">
       <div style="font-size:10px;font-weight:700;color:var(--ac);margin-bottom:8px">⚡ 快速新增品項</div>
-      <div style="display:flex;gap:6px;margin-bottom:6px">
-        <div style="flex:1.2"><div style="font-size:10px;color:var(--tx3);margin-bottom:3px">貨號（比對商品）</div>
-          <input class="form-input" id="d-po-quick-sku" placeholder="貨號" style="padding:7px 9px;font-size:12px;font-family:'JetBrains Mono',monospace;text-transform:uppercase" oninput="dOnPOQuickSku(this.value)" onkeydown="if(event.key==='Enter'){event.preventDefault();poQuickEnterSelect(true);}else if(event.key==='Backspace'&&!this.value){event.preventDefault();poQuickBackspaceSelect(true);}"></div>
-        <div style="flex:1"><div style="font-size:10px;color:var(--tx3);margin-bottom:3px">條碼</div>
-          <input class="form-input" id="d-po-quick-barcode" placeholder="條碼" style="padding:7px 9px;font-size:12px;font-family:'JetBrains Mono',monospace;text-transform:uppercase"></div>
-        <div style="flex:1.5"><div style="font-size:10px;color:var(--tx3);margin-bottom:3px">品名</div>
-          <input class="form-input" id="d-po-quick-name" placeholder="品名" style="padding:7px 9px;font-size:12px"></div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:6px;margin-bottom:6px">
+        <div><div style="font-size:10px;color:var(--tx3);margin-bottom:3px">貨號（比對商品）</div>
+          <input class="form-input" id="d-po-quick-sku" placeholder="貨號" style="padding:7px 9px;font-size:12px;font-family:'JetBrains Mono',monospace;text-transform:uppercase;width:100%;box-sizing:border-box" oninput="dOnPOQuickSku(this.value)" onkeydown="if(event.key==='Enter'){event.preventDefault();poQuickEnterSelect(true);}else if(event.key==='Backspace'&&!this.value){event.preventDefault();poQuickBackspaceSelect(true);}"></div>
+        <div><div style="font-size:10px;color:var(--tx3);margin-bottom:3px">條碼</div>
+          <input class="form-input" id="d-po-quick-barcode" placeholder="條碼" style="padding:7px 9px;font-size:12px;font-family:'JetBrains Mono',monospace;text-transform:uppercase;width:100%;box-sizing:border-box"></div>
+        <div><div style="font-size:10px;color:var(--tx3);margin-bottom:3px">品名</div>
+          <input class="form-input" id="d-po-quick-name" placeholder="品名" style="padding:7px 9px;font-size:12px;width:100%;box-sizing:border-box"></div>
+        <div><div style="font-size:10px;color:var(--tx3);margin-bottom:3px">單件成本 ($)</div>
+          <input class="form-input" type="number" id="d-po-quick-cost" placeholder="成本$" style="padding:7px 9px;font-size:12px;width:100%;box-sizing:border-box" onkeydown="if(event.key==='Enter'){event.preventDefault();dAddPOItem();}"></div>
       </div>
       <div id="d-po-quick-sku-chips" style="margin-top:6px"></div>
-      <div style="display:flex;gap:6px;align-items:center;margin-top:6px">
-        <input class="form-input" type="number" id="d-po-quick-cost" placeholder="單件成本$" style="flex:1;padding:7px 9px;font-size:12px" onkeydown="if(event.key==='Enter'){event.preventDefault();dAddPOItem();}">
+      <div style="display:flex;justify-content:flex-end;margin-top:6px">
         <button class="btn btn-primary btn-sm" id="d-po-add-btn" onclick="dAddPOItem()">＋ 加入清單</button>
       </div>
     </div>
     <div style="font-size:10px;font-weight:700;color:var(--pu);margin-bottom:6px">採購品項明細</div>
-    <div id="d-po-items-list" style="max-height:22vh;overflow-y:auto;margin-bottom:10px"><div style="text-align:center;color:var(--tx3);font-size:12px;padding:12px">尚未新增任何品項</div></div>
+    <div id="d-po-items-list" style="max-height:38vh;overflow-y:auto;margin-bottom:10px"><div style="text-align:center;color:var(--tx3);font-size:12px;padding:12px">尚未新增任何品項</div></div>
     <div id="d-po-cost-summary" style="background:var(--sf2);border-radius:9px;padding:10px 14px;font-size:12px"></div>
   `;
   const sel=document.getElementById('d-po-vendor');
@@ -2228,7 +2232,7 @@ function dAddPOItem(){
   if(desktopPendingSkus.length>0){
     // 把暫選規格全部加入
     desktopPendingSkus.forEach(ps=>{
-      poItems.push({vendorSku,skuCode:ps.skuCode||skuCode,productName:productName||(p?p.name:''),skuDesc:ps.label,qty:1,cost:cost||(p?p.cost:0)});
+      poItems.push({vendorSku,skuCode:ps.skuCode||skuCode,productName:productName||(p?p.name:''),skuDesc:ps.label,qty:ps.qty||1,cost:cost||(p?p.cost:0)});
     });
     desktopPendingSkus=[];
   }else{
@@ -2242,18 +2246,33 @@ function dAddPOItem(){
 function dRenderPOItems(){
   const el=document.getElementById('d-po-items-list');if(!el)return;
   if(!poItems.length){el.innerHTML='<div style="text-align:center;color:var(--tx3);font-size:12px;padding:12px">尚未新增任何品項</div>';return;}
-  el.innerHTML=`<table style="width:100%;border-collapse:collapse">
+  el.innerHTML=`<table style="width:100%;border-collapse:collapse;table-layout:fixed">
+    <colgroup>
+      <col style="width:9%">
+      <col style="width:13%">
+      <col style="width:28%">
+      <col style="width:10%">
+      <col style="width:9%">
+      <col style="width:9%">
+      <col style="width:10%">
+      <col style="width:28px">
+    </colgroup>
     <thead><tr style="font-size:9px;color:var(--tx3);border-bottom:1px solid var(--bd)">
-      <th style="text-align:left;padding:3px 4px 5px 0">貨號</th><th style="text-align:left;padding:3px 4px 5px">條碼</th>
-      <th style="text-align:left;padding:3px 4px 5px">品名</th><th style="text-align:center;padding:3px 4px 5px">數量</th>
-      <th style="text-align:right;padding:3px 4px 5px">成本</th><th style="text-align:right;padding:3px 4px 5px">小計</th><th></th>
+      <th style="text-align:center;padding:3px 4px 5px 0;white-space:nowrap">貨號</th>
+      <th style="text-align:center;padding:3px 4px 5px;white-space:nowrap">條碼</th>
+      <th style="text-align:center;padding:3px 4px 5px">品名</th>
+      <th style="text-align:center;padding:3px 4px 5px;white-space:nowrap">規格</th>
+      <th style="text-align:center;padding:3px 4px 5px;white-space:nowrap">數量</th>
+      <th style="text-align:center;padding:3px 4px 5px;white-space:nowrap">成本</th>
+      <th style="text-align:center;padding:3px 4px 5px;white-space:nowrap">小計</th><th style="width:28px;padding:0"></th>
     </tr></thead>
     <tbody>${poItems.map((item,i)=>`<tr style="border-bottom:1px solid var(--bd)">
-      <td style="padding:5px 4px;font-size:11px;font-family:'JetBrains Mono',monospace">${item.skuCode||'—'}</td>
-      <td style="padding:5px 4px;font-size:11px;font-family:'JetBrains Mono',monospace">${item.vendorSku||'—'}</td>
-      <td style="padding:5px 4px;font-size:11px">${item.productName||'—'}</td>
+      <td style="padding:5px 4px;font-size:11px;font-family:'JetBrains Mono',monospace;text-align:center">${item.skuCode||'—'}</td>
+      <td style="padding:5px 4px;font-size:11px;font-family:'JetBrains Mono',monospace;text-align:center">${item.vendorSku||'—'}</td>
+      <td style="padding:5px 4px;font-size:11px;text-align:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${item.productName||'—'}</td>
+      <td style="padding:5px 4px;font-size:11px;color:var(--tx2);text-align:center">${item.skuDesc||'—'}</td>
       <td style="padding:5px 4px;text-align:center"><input type="number" value="${item.qty||1}" min="1" oninput="poItems[${i}].qty=parseInt(this.value)||1;dUpdatePOCostSummary()" style="width:46px;background:var(--sf);border:1px solid var(--bd);border-radius:5px;padding:3px 4px;color:var(--tx);font-size:11px;text-align:center"></td>
-      <td style="padding:5px 4px;text-align:right"><input type="number" value="${item.cost||0}" min="0" oninput="poItems[${i}].cost=parseInt(this.value)||0;dUpdatePOCostSummary()" style="width:58px;background:var(--sf);border:1px solid var(--bd);border-radius:5px;padding:3px 4px;color:var(--tx);font-size:11px;text-align:right"></td>
+      <td style="padding:5px 4px;text-align:center"><input type="number" value="${item.cost||0}" min="0" oninput="poItems[${i}].cost=parseInt(this.value)||0;dUpdatePOCostSummary()" style="width:58px;background:var(--sf);border:1px solid var(--bd);border-radius:5px;padding:3px 4px;color:var(--tx);font-size:11px;text-align:center"></td>
       <td style="padding:5px 4px;text-align:right;font-size:11px;color:var(--gn)">$${((item.cost||0)*(item.qty||1)).toLocaleString()}</td>
       <td><button onclick="poItems.splice(${i},1);dRenderPOItems();dUpdatePOCostSummary()" style="background:none;border:none;color:var(--rd);cursor:pointer;font-size:14px;padding:0 2px">×</button></td>
     </tr>`).join('')}</tbody>
@@ -4477,12 +4496,22 @@ function renderPOQuickChips(p){
     </div>`;
   const desktopHtml=`<div style="font-size:10px;color:var(--tx3);margin-bottom:4px">Enter選取規格，空白鍵/← →移動，選好後按「加入清單」</div>
     <div style="display:flex;flex-wrap:wrap;gap:4px">
-      ${_skuBtns.map(({label,s,desktopActive})=>`<button type="button"
-          data-label="${label.replace(/"/g,'&quot;')}" data-pid="${pp.id}" data-skucode="${pp.skuCode}"
-          id="dpqs-btn-${label.replace(/[^a-zA-Z0-9]/g,'_')}"
-          style="padding:4px 10px;border-radius:6px;border:1.5px solid ${desktopActive?'var(--gn)':'var(--bd)'};background:${desktopActive?'rgba(63,185,80,.15)':'var(--sf2)'};color:${desktopActive?'var(--gn)':'var(--tx2)'};font-size:11px;cursor:pointer;white-space:nowrap">
-          ${label} <span style="font-size:9px;color:var(--tx3)">(庫存${s.stock})</span>
-        </button>`).join('')}
+      ${_skuBtns.map(({label,s,desktopActive})=>{
+        const pendingItem=desktopPendingSkus.find(x=>x.label===label&&x.skuCode===pp.skuCode);
+        const qty=pendingItem?pendingItem.qty:1;
+        return `<div style="display:inline-flex;align-items:center;gap:3px;margin-bottom:4px">
+          <button type="button"
+            data-label="${label.replace(/"/g,'&quot;')}" data-pid="${pp.id}" data-skucode="${pp.skuCode}"
+            id="dpqs-btn-${label.replace(/[^a-zA-Z0-9]/g,'_')}"
+            style="padding:4px 10px;border-radius:6px;border:1.5px solid ${desktopActive?'var(--gn)':'var(--bd)'};background:${desktopActive?'rgba(63,185,80,.15)':'var(--sf2)'};color:${desktopActive?'var(--gn)':'var(--tx2)'};font-size:11px;cursor:pointer;white-space:nowrap">
+            ${label} <span style="font-size:9px;color:var(--tx3)">(庫存${s.stock})</span>
+          </button>
+          ${desktopActive?`<input type="number" value="${qty}" min="1"
+            data-label="${label.replace(/"/g,'&quot;')}" data-skucode="${pp.skuCode}"
+            oninput="dUpdatePendingQty(this.dataset.label,this.dataset.skucode,parseInt(this.value)||1)"
+            style="width:40px;padding:3px 4px;font-size:11px;border:1px solid var(--gn);border-radius:5px;background:var(--sf);color:var(--tx);text-align:center">`:''}
+        </div>`;
+      }).join('')}
     </div>`;
   const html=mobileHtml;
   document.getElementById('po-quick-sku-chips').innerHTML=html;
@@ -4544,6 +4573,10 @@ function renderPOQuickChips(p){
 }
 
 // 連續點選規格：直接新增到 poItems
+function dUpdatePendingQty(label, skuCode, qty){
+  const item=desktopPendingSkus.find(x=>x.label===label&&x.skuCode===skuCode);
+  if(item)item.qty=qty;
+}
 function dTogglePendingSku(label, skuCode){
   const idx=desktopPendingSkus.findIndex(x=>x.label===label&&x.skuCode===skuCode);
   if(idx>=0) desktopPendingSkus.splice(idx,1);
@@ -4575,7 +4608,7 @@ function poQuickEnterSelect(desktop){
       const firstBtn=chips.querySelector('button');
       if(firstBtn){firstBtn.focus();return;}
     }
-    if(desktop)dAddPOItem();else addPOItem();
+    if(desktop)dAddPOItem();else addPOItemFromQuick();
   },50);
 }
 function poQuickBackspaceSelect(desktop){
