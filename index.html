@@ -1606,7 +1606,7 @@ html,body{height:100%;width:100%;overflow:hidden;font-family:'Noto Sans TC',sans
         </div>
         <div>
           <div style="font-size:10px;color:var(--tx3);margin-bottom:3px">單件成本 ($)</div>
-          <input class="form-input" type="number" id="po-quick-cost" placeholder="成本$" style="padding:7px 9px;font-size:12px;width:100%;box-sizing:border-box" onkeydown="if(event.key==='Enter'){event.preventDefault();addPOItemFromQuick();}">
+          <input class="form-input" type="number" id="po-quick-cost" placeholder="成本$" style="padding:7px 9px;font-size:12px;width:100%;box-sizing:border-box" onclick="this.select()" onkeydown="if(event.key==='Enter'){event.preventDefault();addPOItemFromQuick();}">
         </div>
       </div>
       <!-- 規格快選區（連續多選） -->
@@ -2174,7 +2174,7 @@ function dOpenPOModal(){
         <div><div style="font-size:10px;color:var(--tx3);margin-bottom:3px">品名</div>
           <input class="form-input" id="d-po-quick-name" placeholder="品名" style="padding:7px 9px;font-size:12px;width:100%;box-sizing:border-box"></div>
         <div><div style="font-size:10px;color:var(--tx3);margin-bottom:3px">單件成本 ($)</div>
-          <input class="form-input" type="number" id="d-po-quick-cost" placeholder="成本$" style="padding:7px 9px;font-size:12px;width:100%;box-sizing:border-box" onkeydown="if(event.key==='Enter'){event.preventDefault();dAddPOItem();}"></div>
+          <input class="form-input" type="number" id="d-po-quick-cost" placeholder="成本$" style="padding:7px 9px;font-size:12px;width:100%;box-sizing:border-box" onclick="this.select()" onkeydown="if(event.key==='Enter'){event.preventDefault();dAddPOItem();}"></div>
       </div>
       <div id="d-po-quick-sku-chips" style="margin-top:6px"></div>
       <div style="display:flex;justify-content:flex-end;margin-top:6px">
@@ -2271,8 +2271,18 @@ function dRenderPOItems(){
       <td style="padding:5px 4px;font-size:11px;font-family:'JetBrains Mono',monospace;text-align:center">${item.vendorSku||'—'}</td>
       <td style="padding:5px 4px;font-size:11px;text-align:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${item.productName||'—'}</td>
       <td style="padding:5px 4px;font-size:11px;color:var(--tx2);text-align:center">${item.skuDesc||'—'}</td>
-      <td style="padding:5px 4px;text-align:center"><input type="number" value="${item.qty||1}" min="1" oninput="poItems[${i}].qty=parseInt(this.value)||1;dUpdatePOCostSummary()" style="width:46px;background:var(--sf);border:1px solid var(--bd);border-radius:5px;padding:3px 4px;color:var(--tx);font-size:11px;text-align:center"></td>
-      <td style="padding:5px 4px;text-align:center"><input type="number" value="${item.cost||0}" min="0" oninput="poItems[${i}].cost=parseInt(this.value)||0;dUpdatePOCostSummary()" style="width:58px;background:var(--sf);border:1px solid var(--bd);border-radius:5px;padding:3px 4px;color:var(--tx);font-size:11px;text-align:center"></td>
+      <td style="padding:5px 4px;text-align:center"><input type="number" value="${item.qty||1}" min="1"
+  id="d-po-qty-${i}"
+  oninput="poItems[${i}].qty=parseInt(this.value)||1;dUpdatePOCostSummary()"
+  onclick="this.select()"
+  onkeydown="poListKeyNav(event,'qty',${i})"
+  style="width:46px;background:var(--sf);border:1px solid var(--bd);border-radius:5px;padding:3px 4px;color:var(--tx);font-size:11px;text-align:center"></td>
+      <td style="padding:5px 4px;text-align:center"><input type="number" value="${item.cost||0}" min="0"
+  id="d-po-cost-${i}"
+  oninput="poItems[${i}].cost=parseInt(this.value)||0;dUpdatePOCostSummary()"
+  onclick="this.select()"
+  onkeydown="poListKeyNav(event,'cost',${i})"
+  style="width:58px;background:var(--sf);border:1px solid var(--bd);border-radius:5px;padding:3px 4px;color:var(--tx);font-size:11px;text-align:center"></td>
       <td style="padding:5px 4px;text-align:right;font-size:11px;color:var(--gn)">$${((item.cost||0)*(item.qty||1)).toLocaleString()}</td>
       <td><button onclick="poItems.splice(${i},1);dRenderPOItems();dUpdatePOCostSummary()" style="background:none;border:none;color:var(--rd);cursor:pointer;font-size:14px;padding:0 2px">×</button></td>
     </tr>`).join('')}</tbody>
@@ -4573,6 +4583,21 @@ function renderPOQuickChips(p){
 }
 
 // 連續點選規格：直接新增到 poItems
+function poListKeyNav(e, type, idx){
+  // type: 'qty' or 'cost', idx: 行號
+  if(e.key==='Enter'){
+    e.preventDefault();
+    var next=document.getElementById('d-po-'+type+'-'+(idx+1));
+    if(next){next.focus();next.select();}
+    else{var ab=document.getElementById('d-po-add-btn');if(ab)ab.focus();}
+  } else if(e.key==='ArrowRight'&&type==='qty'){
+    e.preventDefault();
+    var c=document.getElementById('d-po-cost-'+idx);if(c){c.focus();c.select();}
+  } else if(e.key==='ArrowLeft'&&type==='cost'){
+    e.preventDefault();
+    var q=document.getElementById('d-po-qty-'+idx);if(q){q.focus();q.select();}
+  }
+}
 function dUpdatePendingQty(label, skuCode, qty){
   const item=desktopPendingSkus.find(x=>x.label===label&&x.skuCode===skuCode);
   if(item)item.qty=qty;
