@@ -311,7 +311,7 @@ if(_savedFbCfg){
 </script>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@300;400;500;700;900&family=JetBrains+Mono:wght@400;700&display=swap');
-:root{--bg:#fce8f0;--sf:#ffffff;--sf2:#ffffff;--sf3:#fce8f0;--bd:#ffffff;--ac:#c0687f;--gn:#2d9e6b;--rd:#c94040;--yl:#c47c10;--pu:#8b5cf6;--or:#d4702a;--tx:#3d2a30;--tx2:#9e7a84;--tx3:#c4a4ad;--r:12px;--nh:49px;--tb:48px}
+:root{--bg:#fce8f0;--sf:#ffffff;--sf2:#ffffff;--sf3:#fce8f0;--bd:#ffffff;--ac:#c0687f;--gn:#2d9e6b;--rd:#c94040;--yl:#c47c10;--pu:#8b5cf6;--or:#d4702a;--tx:#3d2a30;--tx2:#9e7a84;--tx3:#c4a4ad;--r:12px;--nh:1.5cm;--tb:1.5cm}
 *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 /* 全頁 Flex 佈局：讓 App 完整填滿 iframe 可視區域 */
 html,body{height:100%;width:100%;overflow:hidden;font-family:'Noto Sans TC',sans-serif;background:var(--bg);color:var(--tx);font-size:14px}
@@ -343,7 +343,7 @@ html,body{height:100%;width:100%;overflow:hidden;font-family:'Noto Sans TC',sans
 /* ORDER CARD */
 .order-card{background:var(--sf);border:1px solid var(--bd);border-radius:var(--r);padding:10px 13px;margin-bottom:7px;display:flex;align-items:center;gap:9px;cursor:pointer;transition:border-color .15s}
 .order-card:hover{border-color:var(--ac)}
-.oid{font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--tx3);min-width:40px}
+.oid{font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--tx3);min-width:50px}
 .oinfo{flex:1;min-width:0}.oname{font-size:12px;font-weight:600}
 .oitems{font-size:10px;color:var(--tx2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:1px}
 .oright{text-align:right;flex-shrink:0}
@@ -775,7 +775,7 @@ html,body{height:100%;width:100%;overflow:hidden;font-family:'Noto Sans TC',sans
       <div style="display:flex;flex-direction:column;gap:7px;margin-bottom:16px">
         <button class="btn btn-primary" style="padding:12px;font-weight:700;font-size:14px" onclick="addInPosToCart()">🛒 加入購物車結帳</button>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:7px">
-          <button class="btn btn-ghost" style="padding:10px;font-size:12px" onclick="switchPosTab('pos')">取消</button>
+          <button class="btn btn-ghost" style="padding:10px;font-size:12px" onclick="clearInPosPreorder()">取消</button>
           <button class="btn btn-ghost" style="padding:10px;font-size:12px;color:var(--pu)" onclick="saveInPosPreorder()">📝 僅儲存預訂單</button>
         </div>
       </div>
@@ -1214,6 +1214,15 @@ html,body{height:100%;width:100%;overflow:hidden;font-family:'Noto Sans TC',sans
           <span id="m-points-balance-hint" style="font-size:10px;color:var(--tx3)"></span>
         </div>
       </div>
+      <div id="m-deposit-row" style="display:none;margin-top:5px">
+        <div style="display:flex;align-items:center;gap:5px">
+          <span style="font-size:10px;color:var(--tx2)">儲值金折抵：</span>
+          <input type="number" id="m-deposit-use" placeholder="0" min="0" step="10"
+            style="width:70px;background:var(--sf2);border:1px solid var(--bd);border-radius:6px;padding:4px 7px;color:var(--tx);font-size:12px;text-align:center"
+            oninput="onDepositUseInput('m');updateTotals()">
+          <span id="m-deposit-balance-hint" style="font-size:10px;color:var(--tx3)"></span>
+        </div>
+      </div>
     </div>
     <!-- 快速折價券展開區 -->
     <div id="m-qci-body" style="display:none;background:rgba(139,92,246,.04);border:1px solid rgba(139,92,246,.2);border-radius:9px;padding:9px 11px;margin-bottom:5px">
@@ -1505,6 +1514,36 @@ html,body{height:100%;width:100%;overflow:hidden;font-family:'Noto Sans TC',sans
   </div>
 </div>
 
+<!-- 儲值金 Modal -->
+<div class="modal-overlay" id="modal-deposit" style="display:none">
+  <div class="modal" style="max-width:360px">
+    <div class="modal-handle"></div>
+    <h3>會員儲值</h3>
+    <div id="md-deposit-name" style="font-size:13px;color:var(--tx2);margin-bottom:12px"></div>
+    <div class="form-group">
+      <label class="form-label">儲值金額 ($)</label>
+      <input class="form-input" type="number" id="deposit-amount" placeholder="例如 500" min="1" onclick="this.select()">
+    </div>
+    <div class="form-group">
+      <label class="form-label">付款方式</label>
+      <select class="form-input" id="deposit-pay-method">
+        <option value="現金">現金</option>
+        <option value="轉帳">轉帳</option>
+        <option value="刷卡">刷卡</option>
+        <option value="Line Pay">Line Pay</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label class="form-label">備註（選填）</label>
+      <input class="form-input" id="deposit-note" placeholder="備註">
+    </div>
+    <div class="modal-btns">
+      <button class="btn btn-ghost" onclick="closeModal('modal-deposit')">取消</button>
+      <button class="btn btn-primary" onclick="confirmDeposit()">確認儲值</button>
+    </div>
+  </div>
+</div>
+
 <!-- MEMBER DETAIL MODAL -->
 <div class="modal-overlay" id="modal-member-detail">
   <div class="modal">
@@ -1709,7 +1748,7 @@ html,body{height:100%;width:100%;overflow:hidden;font-family:'Noto Sans TC',sans
 const DEFAULT_COLORS=['黑色','白色','灰色','深藍','淺藍','藍色','紅色','酒紅','粉色','橘色','綠色','卡其','米白','咖啡','軍綠','紫色','原色','格紋','牛仔藍','條紋'];
 const DEFAULT_SIZES=['F','XS','S','M','L','XL','XXL','XXXL','24','25','26','27','28','29','30','31','32','34'];
 const DEFAULT_PAY_METHODS=['現金','轉帳','刷卡','Line Pay'];
-const KEYS={products:'pm_p',orders:'pm_o',nextId:'pm_nid',cats:'pm_c',promos:'pm_pr',nextPromoId:'pm_npid',coupons:'pm_cp',nextCouponSeq:'pm_ncs',orderSeq:'pm_os',vendors:'pm_v',payMethods:'pm_pay',presetColors:'pm_pc',presetSizes:'pm_ps',purchaseOrders:'pm_po',nextPoId:'pm_npoid',members:'pm_mbr',nextMemberSeq:'pm_nms',memberTiers:'pm_mt',pointsSettings:'pm_pts',expenses:'pm_exp'};
+const KEYS={products:'pm_p',orders:'pm_o',nextId:'pm_nid',cats:'pm_c',promos:'pm_pr',nextPromoId:'pm_npid',coupons:'pm_cp',nextCouponSeq:'pm_ncs',orderSeq:'pm_os',vendors:'pm_v',payMethods:'pm_pay',presetColors:'pm_pc',presetSizes:'pm_ps',purchaseOrders:'pm_po',nextPoId:'pm_npoid',members:'pm_mbr',nextMemberSeq:'pm_nms',memberTiers:'pm_mt',pointsSettings:'pm_pts',expenses:'pm_exp',depositSettings:'pm_deposit'};
 
 // ============================================================
 // STORAGE
@@ -1881,7 +1920,8 @@ let lowStockThreshold=5,lowStockSuggestQty=10;
 let cartMemberId=null;
 let returnOrderRef=null,returnItemSelections=[];
 let nextVendorId=3;
-let desktopPendingSkus=[]; // 桌面版暫選規格（按加入清單才真正加入）
+let desktopPendingSkus=[];
+let usedDepositAmount=0; // 本次結帳使用儲值金 // 桌面版暫選規格（按加入清單才真正加入）
 // 購物車退換貨狀態
 let cartReturnDisc=0;
 let cartReturnOrderId=null;
@@ -2030,7 +2070,7 @@ function wrapPosDesktop(el){
         <div style="display:flex;flex-direction:column;gap:7px;margin-bottom:16px">
           <button class="btn btn-primary" style="padding:11px;font-weight:700;font-size:14px" onclick="addInPosToCart()">🛒 加入購物車結帳</button>
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:7px">
-            <button class="btn btn-ghost" style="padding:10px;font-size:12px" onclick="switchPosTab('pos')">取消</button>
+            <button class="btn btn-ghost" style="padding:10px;font-size:12px" onclick="clearInPosPreorder()">取消</button>
             <button class="btn btn-ghost" style="padding:10px;font-size:12px;color:var(--pu)" onclick="saveInPosPreorder('d')">📝 僅儲存預訂單</button>
           </div>
         </div>
@@ -2091,6 +2131,15 @@ function wrapPosDesktop(el){
                 style="width:70px;background:var(--sf2);border:1px solid var(--bd);border-radius:6px;padding:4px 7px;color:var(--tx);font-size:12px;text-align:center"
                 oninput="onPointsUseInput('d');updateTotals()">
               <span id="d-points-balance-hint" style="font-size:10px;color:var(--tx3)"></span>
+            </div>
+          </div>
+          <div id="d-deposit-row" style="display:none;margin-top:5px">
+            <div style="display:flex;align-items:center;gap:5px">
+              <span style="font-size:10px;color:var(--tx2)">儲值金折抵：</span>
+              <input type="number" id="d-deposit-use" placeholder="0" min="0" step="10"
+                style="width:70px;background:var(--sf2);border:1px solid var(--bd);border-radius:6px;padding:4px 7px;color:var(--tx);font-size:12px;text-align:center"
+                oninput="onDepositUseInput('d');updateTotals()">
+              <span id="d-deposit-balance-hint" style="font-size:10px;color:var(--tx3)"></span>
             </div>
           </div>
         </div>
@@ -2417,13 +2466,21 @@ function showNotif(msg,color='var(--pu)'){
 // ============================================================
 // DASHBOARD
 // ============================================================
+function getTodayStr(){
+  // 以每日早上6點為一天的起始
+  const now=new Date();
+  const d=now.getHours()<6?new Date(now-86400000):now; // 6點前算昨天
+  return d.toLocaleDateString('zh-TW');
+}
 function renderDashboard(){
-  const revenue=orders.reduce((s,o)=>s+o.total,0);
-  const sold=orders.reduce((s,o)=>s+o.items.reduce((ss,i)=>ss+i.qty,0),0);
+  const todayStr=getTodayStr();
+  const todayOrders=orders.filter(o=>o.date===todayStr&&!o.isDeposit);
+  const revenue=todayOrders.reduce((s,o)=>s+o.total,0);
+  const sold=todayOrders.reduce((s,o)=>s+o.items.reduce((ss,i)=>ss+i.qty,0),0);
   const low=products.filter(p=>getPTotalStock(p)<=5).length;
-  const totalRefund=orders.reduce((s,o)=>s+((o.returns||[]).reduce((rs,r)=>rs+r.amount,0)),0);
+  const totalRefund=todayOrders.reduce((s,o)=>s+((o.returns||[]).reduce((rs,r)=>rs+r.amount,0)),0);
   setEl(['s-revenue','d-s-revenue'],'$'+revenue.toLocaleString());
-  setEl(['s-orders','d-s-orders'],orders.length+' 筆訂單');
+  setEl(['s-orders','d-s-orders'],todayOrders.length+' 筆訂單');
   setEl(['s-products','d-s-products'],products.length);
   setEl(['s-low','d-s-low'],low);
   setEl(['s-sold','d-s-sold'],sold);
@@ -2436,11 +2493,19 @@ function renderDashboard(){
   const lowItems=products.filter(p=>getPTotalStock(p)<=5);
   ['alert-bar','d-alert-bar'].forEach(id=>{
     const e=document.getElementById(id);if(!e)return;
-    if(lowItems.length>0){e.textContent='⚠️ 低庫存：'+lowItems.map(p=>p.name+(p.skuCode?'('+p.skuCode+')':'')+'剩'+getPTotalStock(p)+'件').join('、');e.classList.add('show');}
+    if(lowItems.length>0){
+      const _detail=lowItems.map(p=>p.name+(p.skuCode?'('+p.skuCode+')':'')+'剩'+getPTotalStock(p)+'件').join('、');
+      e.innerHTML=`<div style="cursor:pointer;font-weight:700;display:flex;align-items:center;gap:6px" onclick="const d=this.nextElementSibling;const open=d.style.display!=='none';d.style.display=open?'none':'block';this.querySelector('.arrow').textContent=open?'▾':'▴'">
+        <span>⚠️ 低庫存 ${lowItems.length} 件商品</span><span class="arrow">▾</span><span style="font-size:10px;font-weight:400;color:var(--tx2)">點擊展開</span>
+      </div>
+      <div style="display:none;margin-top:6px;font-size:11px;line-height:1.8">${_detail}</div>`;
+      e.classList.add('show');
+    }
     else e.classList.remove('show');
   });
-  const html=orders.length===0?'<div style="text-align:center;color:var(--tx3);padding:26px;font-size:13px">尚無銷售記錄</div>'
-    :[...orders].reverse().slice(0,5).map(o=>orderCardHTML(o)).join('');
+  const todayOrdersForList=[...orders].filter(o=>o.date===todayStr).reverse();
+  const html=todayOrdersForList.length===0?'<div style="text-align:center;color:var(--tx3);padding:26px;font-size:13px">今日尚無銷售記錄</div>'
+    :todayOrdersForList.map(o=>orderCardHTML(o)).join('');
   setEl(['recent-orders-list','d-recent-orders-list'],html,true);
 }
 
@@ -2496,6 +2561,21 @@ let posReturnQtys={};
 let posReturnMethod='cash';
 let posExchangeItems=[];
 
+function clearInPosPreorder(){
+  inPosPreorderItems=[];
+  // 清除新增商品列表
+  const el=document.getElementById(isDesktop?'d-inpos-items-form':'inpos-items-form');
+  if(el){el.dataset.quickSku='';el.dataset.quickPid='';}
+  // 清除表單欄位
+  ['inpos-customer-name','d-inpos-customer-name'].forEach(id=>{const e=document.getElementById(id);if(e)e.value='';});
+  ['inpos-customer-phone','d-inpos-customer-phone'].forEach(id=>{const e=document.getElementById(id);if(e)e.value='';});
+  ['inpos-note','d-inpos-note'].forEach(id=>{const e=document.getElementById(id);if(e)e.value='';});
+  ['inpos-deposit','d-inpos-deposit'].forEach(id=>{const e=document.getElementById(id);if(e)e.value='0';});
+  ['inpos-due-date','d-inpos-due-date'].forEach(id=>{const e=document.getElementById(id);if(e)e.value='';});
+  ['inpos-member-search','d-inpos-member-search'].forEach(id=>{const e=document.getElementById(id);if(e)e.value='';});
+  renderInPosItems();
+  switchPosTab('pos');
+}
 function switchPosTab(tab){
   currentPosTab=tab;
   // 更新所有 tab 按鈕
@@ -2952,7 +3032,7 @@ function renderPosReturnDetail(o, detailId){
     </div>
     <input class="pos-search" id="pos-return-note" placeholder="退貨原因（選填）..." style="margin-bottom:10px">
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:20px">
-      <button class="btn btn-ghost" style="padding:13px;font-size:14px" onclick="switchPosTab('pos')">取消</button>
+      <button class="btn btn-ghost" style="padding:13px;font-size:14px" onclick="clearInPosPreorder()">取消</button>
       <button class="btn btn-danger" style="padding:13px;font-size:14px;font-weight:700" onclick="confirmPosReturn()">✅ 確認退貨</button>
     </div>`;
 }
@@ -3654,11 +3734,12 @@ function updateTotals(){
   const{disc:autoDisc,breakdown}=hasAddOn?calcPromoDiscountExcludeQty():calcPromoDiscount();
   const cpnDisc=getAppliedCouponAmt();
   const pointsDisc=getPointsUseAmount();
+  const depositDisc=getDepositUseAmount();
   const returnDisc=cartReturnDisc||0;
   const mDisc=parseInt(document.getElementById('m-disc-input')?.value||0)||0;
   const dDisc=parseInt(document.getElementById('d-disc-input')?.value||0)||0;
   const manualDisc=isDesktop?dDisc:mDisc;
-  const total=Math.max(0,sub-addOnDisc-autoDisc-cpnDisc-pointsDisc-returnDisc-manualDisc);
+  const total=Math.max(0,sub-addOnDisc-autoDisc-cpnDisc-pointsDisc-depositDisc-returnDisc-manualDisc);
 
   setEl(['m-subtotal','d-subtotal'],'$'+sub.toLocaleString());
 
@@ -3685,6 +3766,8 @@ function updateTotals(){
   ['m-cpn-disc-row','d-cpn-disc-row'].forEach(id=>{const e=document.getElementById(id);if(e)e.style.display=cpnDisc>0?'':'none';});
   setEl(['m-points-disc','d-points-disc'],pointsDisc>0?'-$'+pointsDisc.toLocaleString():'-$0');
   ['m-points-disc-row','d-points-disc-row'].forEach(id=>{const e=document.getElementById(id);if(e)e.style.display=pointsDisc>0?'':'none';});
+  setEl(['m-deposit-disc','d-deposit-disc'],depositDisc>0?'-$'+depositDisc.toLocaleString():'');
+  ['m-deposit-disc-row','d-deposit-disc-row'].forEach(id=>{const e=document.getElementById(id);if(e)e.style.display=depositDisc>0?'':'none';});
   setEl(['m-return-disc','d-return-disc'],returnDisc>0?'-$'+returnDisc.toLocaleString():'-$0');
   ['m-return-disc-row','d-return-disc-row'].forEach(id=>{
     const e=document.getElementById(id);if(e)e.style.display=returnDisc>0?'':'none';
@@ -3815,7 +3898,7 @@ function checkout(method, payBreakdown=[], change=0){
   const mDisc=parseInt(document.getElementById('m-disc-input')?.value||0)||0;
   const dDisc=parseInt(document.getElementById('d-disc-input')?.value||0)||0;
   const manualDisc=isDesktop?dDisc:mDisc;
-  const total=Math.max(0,sub-autoDisc-cpnDisc-pointsDisc-returnDisc-manualDisc);
+  const total=Math.max(0,sub-autoDisc-cpnDisc-pointsDisc-usedDepositAmount-returnDisc-manualDisc);
   // 扣庫存
   cart.forEach(item=>{
     const p=products.find(x=>x.id===item.id);if(!p)return;
@@ -3843,6 +3926,12 @@ function checkout(method, payBreakdown=[], change=0){
   if(usedMemberId&&total>0){
     const m=members.find(x=>x.id===usedMemberId);
     if(m){
+      // 扣除本次使用的儲值金
+      if(usedDepositAmount>0){
+        m.deposit=Math.max(0,(m.deposit||0)-usedDepositAmount);
+        m.depositLog=m.depositLog||[];
+        m.depositLog.push({date:new Date().toLocaleDateString('zh-TW'),note:'結帳扣抵 #'+orderId,amount:-usedDepositAmount});
+      }
       m.totalSpend=(m.totalSpend||0)+total;
       const earned=calcPointsEarned(total);
       if(earned>0){
@@ -3862,6 +3951,7 @@ function checkout(method, payBreakdown=[], change=0){
     autoDisc,promoBreakdown,
     couponCode:usedCpnCode,couponDisc:usedCpnAmt,
     pointsDisc,
+    depositDisc:usedDepositAmount,
     returnDisc,                    // ← 退換貨折抵
     returnOrderId:cartReturnOrderId, // ← 關聯的退貨訂單
     manualDisc,
@@ -3904,6 +3994,8 @@ function checkout(method, payBreakdown=[], change=0){
   cart=[];cartMemberId=null;
   ['m-disc-input','d-disc-input'].forEach(id=>{const e=document.getElementById(id);if(e)e.value='';});
   ['m-points-use','d-points-use'].forEach(id=>{const e=document.getElementById(id);if(e)e.value='';});
+  ['m-deposit-use','d-deposit-use'].forEach(id=>{const e=document.getElementById(id);if(e)e.value='';});
+  usedDepositAmount=0;
   clearCartMember('m');clearCartMember('d');
   renderCart();updateCartBadge();renderProducts();renderDashboard();renderCoupons();renderOrders();
 }
@@ -3979,8 +4071,14 @@ function _doRenderInventory(){
   }).join('')||'<div style="text-align:center;color:var(--tx3);padding:26px;font-size:12px">查無商品</div>';
   const dInv=document.getElementById('d-inv-list');
   const mInv=document.getElementById('inv-list');
-  if(dInv)dInv.innerHTML=html;
-  if(mInv)mInv.innerHTML=html;
+  // 只渲染當前模式的清單，避免兩份清單造成點擊錯亂
+  if(isDesktop){
+    if(dInv)dInv.innerHTML=html;
+    if(mInv)mInv.innerHTML='';
+  }else{
+    if(mInv)mInv.innerHTML=html;
+    if(dInv)dInv.innerHTML='';
+  }
 }
 
 // 商品庫存查看（點選卡片觸發）
@@ -4339,8 +4437,8 @@ function savePromo(){
 function orderCardHTML(o){
   const td=(o.autoDisc||0)+(o.couponDisc||0)+(o.manualDisc||0);
   return `<div class="order-card" onclick="openOrderDetail('${o.id}')">
-    <div class="oid">#${o.id}</div>
-    <div class="oinfo"><div class="oname">${o.payMethod} <span style="font-size:9px;color:var(--tx3)">${o.date||''}</span></div>
+    <div class="oid">#${o.id.startsWith('DEP')&&o.id.length>15?'DEP'+o.id.slice(3,13)+'…':o.id}</div>
+    <div class="oinfo"><div class="oname">${o.payMethod} <span style="font-size:11px;color:var(--tx3)">${o.date||''}</span></div>
     <div class="oitems">${o.items.map(i=>i.name+(i.color?'/'+i.color:'')+(i.size&&i.size!=='F'?'/'+i.size:'')+'×'+i.qty).join('、')}</div></div>
     <div class="oright"><div class="oamt">$${o.total.toLocaleString()}</div>${td>0?`<div style="font-size:9px;color:var(--yl)">折-$${td.toLocaleString()}</div>`:''}<div class="otime">${o.time}</div></div>
   </div>`;
@@ -4350,13 +4448,54 @@ function renderOrders(){
     :[...orders].reverse().map(o=>orderCardHTML(o)).join('');
   setEl(['orders-list','d-orders-list'],html,true);
 }
+function editOrderTime(orderId){
+  const o=orders.find(x=>x.id===orderId);if(!o)return;
+  // 把日期時間文字換成輸入框
+  const span=document.getElementById('od-datetime-text');
+  if(!span)return;
+  const curDate=o.date||new Date().toLocaleDateString('zh-TW');
+  const curTime=o.time||'00:00:00';
+  // 把時間轉為 HH:MM 格式
+  const timeParts=curTime.split(':');
+  const timeVal=(timeParts[0]||'00').padStart(2,'0')+':'+(timeParts[1]||'00').padStart(2,'0');
+  // 把日期轉為 YYYY-MM-DD
+  const dateParts=curDate.split('/');
+  let dateVal='';
+  if(dateParts.length===3)dateVal=dateParts[0]+'-'+dateParts[1].padStart(2,'0')+'-'+dateParts[2].padStart(2,'0');
+  span.innerHTML=`<div style="display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-top:4px">
+    <input type="date" value="${dateVal}" id="od-edit-date" style="font-size:14px;border:1.5px solid var(--bd);border-radius:7px;padding:5px 8px;background:var(--sf2);color:var(--tx)">
+    <input type="time" value="${timeVal}" id="od-edit-time" style="font-size:14px;border:1.5px solid var(--bd);border-radius:7px;padding:5px 8px;background:var(--sf2);color:var(--tx)">
+    <button onclick="saveOrderTime('${orderId}')" style="font-size:13px;color:#fff;background:var(--ac);border:none;border-radius:7px;padding:6px 14px;cursor:pointer;font-weight:700">儲存</button>
+    <button onclick="openOrderDetail('${orderId}')" style="font-size:13px;color:var(--tx2);border:1px solid var(--bd);background:var(--sf2);border-radius:7px;padding:6px 10px;cursor:pointer">取消</button>
+  </div>`;
+}
+function saveOrderTime(orderId){
+  const o=orders.find(x=>x.id===orderId);if(!o)return;
+  const dateEl=document.getElementById('od-edit-date');
+  const timeEl=document.getElementById('od-edit-time');
+  if(!dateEl||!timeEl)return;
+  // 轉換日期格式 YYYY-MM-DD → zh-TW 格式
+  const dp=dateEl.value.split('-');
+  if(dp.length===3)o.date=parseInt(dp[0])+'/'+parseInt(dp[1])+'/'+parseInt(dp[2]);
+  // 時間格式
+  const tp=timeEl.value.split(':');
+  if(tp.length>=2)o.time=tp[0]+':'+tp[1]+':00';
+  save();
+  renderDashboard();
+  openOrderDetail(orderId);
+  showNotif('✅ 時間已更新','var(--gn)');
+}
 function openOrderDetail(id){
   const o=orders.find(x=>x.id===id);if(!o)return;
   document.getElementById('od-title').textContent='訂單 #'+o.id;
   const issuedCpns=coupons.filter(c=>c.issuedOrderId===o.id);
   const member=o.memberId?members.find(x=>x.id===o.memberId):null;
   document.getElementById('od-content').innerHTML=`
-    <div style="font-size:10px;color:var(--tx2);margin-bottom:9px">${o.date} ${o.time}${member?` ｜ 👤 ${member.name}`:''}</div>
+    <div style="font-size:13px;color:var(--tx2);margin-bottom:9px;display:flex;align-items:center;gap:8px">
+      <span id="od-datetime-text">${o.date} ${o.time}</span>
+      <button onclick="editOrderTime('${o.id}')" style="font-size:12px;color:var(--ac);border:1px solid var(--ac);background:none;cursor:pointer;padding:2px 8px;border-radius:5px">✏️ 編輯</button>
+      ${member?`｜ 👤 ${member.name}`:''}
+    </div>
     <div style="margin-bottom:10px">${o.items.map(i=>`<div class="od-item"><span>${i.name}${i.color?' '+i.color:''}${i.size&&i.size!=='F'?' '+i.size:''} × ${i.qty}</span><span style="font-family:'JetBrains Mono',monospace">$${(i.price*i.qty).toLocaleString()}</span></div>`).join('')}</div>
     <div style="background:var(--sf2);border-radius:9px;padding:11px">
       <div class="sum-row" style="margin-bottom:4px"><span>小計</span><span>$${o.subtotal.toLocaleString()}</span></div>
@@ -5388,9 +5527,11 @@ function saveMember(){
       note:document.getElementById('fm-note').value.trim(),
       tier:document.getElementById('fm-tier').value||'',
       points:pointsSettings.newMemberBonus, // 入會贈購物金
+      deposit:0, // 儲值金
       totalSpend:0,
       orders:[],
       pointsLog:[{date:new Date().toLocaleDateString('zh-TW'),note:'入會贈送',amount:pointsSettings.newMemberBonus}],
+      depositLog:[], // 儲值金記錄
       joinDate:new Date().toLocaleDateString('zh-TW')
     };
     members.push(newM);
@@ -5440,6 +5581,11 @@ function openMemberDetail(id){
         <div style="font-size:10px;color:var(--tx3)">購物金餘額</div>
         <div style="font-size:22px;font-weight:900;color:var(--pu);font-family:'JetBrains Mono',monospace">$${(m.points||0).toLocaleString()}</div>
       </div>
+      <div style="background:rgba(16,185,129,.08);border:1px solid rgba(16,185,129,.2);border-radius:9px;padding:10px;text-align:center">
+        <div style="font-size:10px;color:var(--tx3)">儲值金餘額</div>
+        <div style="font-size:22px;font-weight:900;color:var(--gn);font-family:'JetBrains Mono',monospace">$${(m.deposit||0).toLocaleString()}</div>
+        <button class="btn btn-sm" style="margin-top:6px;background:var(--gn);color:#fff;font-size:10px;padding:3px 10px" onclick="openAddDepositModal('${m.id}')">＋ 儲值</button>
+      </div>
       <div style="background:rgba(63,185,80,.08);border:1px solid rgba(63,185,80,.2);border-radius:9px;padding:10px;text-align:center">
         <div style="font-size:10px;color:var(--tx3)">累積消費</div>
         <div style="font-size:22px;font-weight:900;color:var(--gn);font-family:'JetBrains Mono',monospace">$${(m.totalSpend||0).toLocaleString()}</div>
@@ -5449,7 +5595,7 @@ function openMemberDetail(id){
     ${(m.orders||[]).length?[...m.orders].reverse().slice(0,10).map(oid=>{
       const o=orders.find(x=>x.id===oid);
       return o?`<div class="order-card" style="cursor:default;margin-bottom:5px">
-        <div class="oid">#${o.id}</div>
+        <div class="oid">#${o.id.startsWith('DEP')&&o.id.length>15?'DEP'+o.id.slice(3,13)+'…':o.id}</div>
         <div class="oinfo"><div class="oname">${o.payMethod} ${o.date}</div><div class="oitems">${o.items.map(i=>i.name+'×'+i.qty).join('、')}</div></div>
         <div class="oright"><div class="oamt">$${o.total.toLocaleString()}</div></div>
       </div>`:''}).join(''):'<div style="color:var(--tx3);font-size:12px;padding:8px 0">尚無購買記錄</div>'}
@@ -5458,7 +5604,8 @@ function openMemberDetail(id){
       <div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid var(--bd);font-size:11px">
         <span style="color:var(--tx2)">${l.date} ${l.note}</span>
         <span style="font-family:'JetBrains Mono',monospace;font-weight:700;color:${l.amount>=0?'var(--gn)':'var(--rd)'}">${l.amount>=0?'+':''}$${l.amount}</span>
-      </div>`).join(''):'<div style="color:var(--tx3);font-size:12px;padding:8px 0">尚無記錄</div>'}`;
+      </div>`).join(''):'<div style="color:var(--tx3);font-size:12px;padding:8px 0">尚無記錄</div>'}
+        <div style="font-size:10px;font-weight:700;color:var(--gn);border-top:1px solid var(--bd);padding-top:8px;margin-top:8px">儲值金記錄</div>\n    ${(m.depositLog||[]).length?[...m.depositLog].reverse().slice(0,8).map(l=>`\n      <div style=\"display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid var(--bd);font-size:11px\">\n        <span style=\"color:var(--tx2)\">${l.date} ${l.note}</span>\n        <span style=\"font-family:'JetBrains Mono',monospace;font-weight:700;color:${l.amount>=0?'var(--gn)':'var(--rd)'}\">${l.amount>=0?'+':''}$${l.amount}</span>\n      </div>`).join(''):'<div style=\"color:var(--tx3);font-size:12px;padding:8px 0\">尚無記錄</div>'}`;
   document.getElementById('md-edit-btn').onclick=()=>openEditMember(id);
   document.getElementById('md-points-btn').onclick=()=>{closeModal('modal-member-detail');openMemberPoints(id);};
   openModal('modal-member-detail');
@@ -5618,7 +5765,11 @@ function clearCart(){
   ['m-member-info','d-member-info'].forEach(id=>setEl([id],''));
   ['m-member-birthday-alert','d-member-birthday-alert'].forEach(id=>{const e=document.getElementById(id);if(e)e.style.display='none';});
   ['m-points-row','d-points-row'].forEach(id=>{const e=document.getElementById(id);if(e)e.style.display='none';});
+  ['m-deposit-row','d-deposit-row'].forEach(id=>{const e=document.getElementById(id);if(e)e.style.display='none';});
+  ['m-deposit-use','d-deposit-use'].forEach(id=>{const e=document.getElementById(id);if(e)e.value='';});
   ['m-points-use','d-points-use'].forEach(id=>{const e=document.getElementById(id);if(e)e.value='';});
+  ['m-deposit-use','d-deposit-use'].forEach(id=>{const e=document.getElementById(id);if(e)e.value='';});
+  usedDepositAmount=0;
   ['m-disc-input','d-disc-input'].forEach(id=>{const e=document.getElementById(id);if(e)e.value='';});
   renderCart();updateTotals();
 }
@@ -5712,6 +5863,12 @@ function confirmCartMember(memberId,pfx){
   const prow=document.getElementById(pfx+'-points-row');
   if(prow){
     prow.style.display='';
+    // 儲值金行
+    const deprow=document.getElementById(pfx+'-deposit-row');
+    const mbDep=members.find(x=>x.id===cartMemberId);
+    if(deprow)deprow.style.display=(mbDep&&(mbDep.deposit||0)>0)?'':'none';
+    const dph=document.getElementById(pfx+'-deposit-balance-hint');
+    if(dph&&mbDep)dph.textContent='餘額 $'+(mbDep.deposit||0);
     const hint=document.getElementById(pfx+'-points-balance-hint');
     if(hint)hint.textContent='可用 $'+(m.points||0)+'（10點單位）';
     // 自動清空折抵輸入框
@@ -5740,7 +5897,11 @@ function clearCartMember(pfx){
   ['m-member-info','d-member-info'].forEach(id=>setEl([id],''));
   ['m-member-birthday-alert','d-member-birthday-alert'].forEach(id=>{const e=document.getElementById(id);if(e)e.style.display='none';});
   ['m-points-row','d-points-row'].forEach(id=>{const e=document.getElementById(id);if(e)e.style.display='none';});
+  ['m-deposit-row','d-deposit-row'].forEach(id=>{const e=document.getElementById(id);if(e)e.style.display='none';});
+  ['m-deposit-use','d-deposit-use'].forEach(id=>{const e=document.getElementById(id);if(e)e.value='';});
   ['m-points-use','d-points-use'].forEach(id=>{const e=document.getElementById(id);if(e)e.value='';});
+  ['m-deposit-use','d-deposit-use'].forEach(id=>{const e=document.getElementById(id);if(e)e.value='';});
+  usedDepositAmount=0;
   updateTotals();
 }
 function onPointsUseInput(pfx){
@@ -5753,6 +5914,65 @@ function onPointsUseInput(pfx){
   val=Math.floor(val/unit)*unit;
   val=Math.min(val,m.points||0);
   el.value=val;
+}
+function getDepositUseAmount(){
+  const pfx=isDesktop?'d':'m';
+  return parseInt(document.getElementById(pfx+'-deposit-use')?.value||0)||0;
+}
+function onDepositUseInput(pfx){
+  const m=members.find(x=>x.id===cartMemberId);if(!m)return;
+  const el=document.getElementById(pfx+'-deposit-use');
+  if(!el)return;
+  let val=parseInt(el.value)||0;
+  val=Math.max(0,Math.min(val,m.deposit||0));
+  el.value=val;
+}
+function openAddDepositModal(memberId){
+  const m=members.find(x=>x.id===memberId);if(!m)return;
+  window._depositMemberId=memberId;
+  document.getElementById('md-deposit-name').textContent=m.name+'　目前餘額 $'+(m.deposit||0);
+  document.getElementById('deposit-amount').value='';
+  document.getElementById('deposit-note').value='';
+  // 先關閉會員詳情，再開儲值視窗
+  closeModal('modal-member-detail');
+  setTimeout(()=>openModal('modal-deposit'),100);
+}
+function confirmDeposit(){
+  const memberId=window._depositMemberId;
+  const amount=parseInt(document.getElementById('deposit-amount').value)||0;
+  const payMethod=document.getElementById('deposit-pay-method').value;
+  const note=document.getElementById('deposit-note').value.trim();
+  if(!amount||amount<=0){alert('請輸入儲值金額');return;}
+  addMemberDeposit(memberId, amount, payMethod+(note?'（'+note+'）':''));
+  closeModal('modal-deposit');
+  // 重開會員詳情顯示最新資料
+  setTimeout(()=>{
+    const m=members.find(x=>x.id===memberId);
+    if(m)openMemberDetail(memberId);
+  },150);
+  renderMembers();renderDashboard();
+}
+function addMemberDeposit(memberId, amount, note){
+  const m=members.find(x=>x.id===memberId);if(!m)return;
+  m.deposit=(m.deposit||0)+amount;
+  m.depositLog=m.depositLog||[];
+  m.depositLog.push({date:new Date().toLocaleDateString('zh-TW'),note:note||'儲值',amount});
+  // 儲值收款計入當日業績（新增一筆「儲值」訂單）
+  const depositOrderId='DEP'+genOrderId();
+  const depositOrder={
+    id:depositOrderId,
+    items:[{name:'儲值金',qty:1,price:amount,color:'',size:''}],
+    subtotal:amount,autoDisc:0,couponDisc:0,pointsDisc:0,depositDisc:0,manualDisc:0,
+    total:amount,
+    memberId,
+    isDeposit:true, // 標記為儲值記錄
+    payMethod:note||'現金儲值',
+    time:new Date().toLocaleTimeString('zh-TW'),
+    date:new Date().toLocaleDateString('zh-TW'),
+  };
+  orders.push(depositOrder);
+  save();
+  showNotif('✅ 已儲值 $'+amount+'，餘額 $'+m.deposit,'var(--gn)');
 }
 function getPointsUseAmount(){
   const pfx=isDesktop?'d':'m';
@@ -6265,6 +6485,12 @@ function setCartMember(m,pfx){
   if(bdayEl)bdayEl.style.display=isBirthdayMonth(m)?'':'none';
   const pointsRowEl=document.getElementById(pfx+'-points-row');
   if(pointsRowEl)pointsRowEl.style.display='';
+  // 同時顯示儲值金行
+  const depositRowEl=document.getElementById(pfx+'-deposit-row');
+  const m_dep=members.find(x=>x.id===cartMemberId);
+  if(depositRowEl)depositRowEl.style.display=(m_dep&&(m_dep.deposit||0)>0)?'':'none';
+  const depHint=document.getElementById(pfx+'-deposit-balance-hint');
+  if(depHint&&m_dep)depHint.textContent='餘額 $'+(m_dep.deposit||0);
   const hintEl=document.getElementById(pfx+'-points-balance-hint');
   if(hintEl)hintEl.textContent=`可用 $${(m.points||0).toLocaleString()}（每${pointsSettings.unit}點折抵$${pointsSettings.value}）`;
   updateTotals();
