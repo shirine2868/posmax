@@ -320,6 +320,8 @@ if(_savedFbCfg&&_savedFbCfg!=='skip'){
 html,body{overflow-x:hidden;max-width:100%}
 *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 img,video,canvas,svg{max-width:100%}
+.qty-input::-webkit-inner-spin-button,.qty-input::-webkit-outer-spin-button{-webkit-appearance:none;margin:0}
+
 /* 全頁 Flex 佈局：讓 App 完整填滿 iframe 可視區域 */
 html,body{height:100%;width:100%;overflow:hidden;max-width:100vw;font-family:'Noto Sans TC',sans-serif;background:var(--bg);color:var(--tx);font-size:14px}
 /* MOBILE APP SHELL */
@@ -1317,8 +1319,9 @@ html,body{height:100%;width:100%;overflow:hidden;max-width:100vw;font-family:'No
     <h3 id="spec-title">選擇規格</h3>
     <div id="spec-color-section"><div class="picker-title">顏色</div><div class="chip-group" id="spec-colors"></div></div>
     <div id="spec-size-section"><div class="picker-title">尺寸</div><div class="chip-group" id="spec-sizes"></div></div>
-    <div id="spec-stock-info" style="font-size:11px;color:var(--tx2);margin-bottom:10px;min-height:16px"></div>
-    <div class="modal-btns"><button class="btn btn-ghost" onclick="closeModal('modal-spec')">關閉</button><button class="btn btn-primary" onclick="confirmSpec()">加入購物車</button></div>
+    <div id="spec-stock-info" style="font-size:11px;color:var(--tx2);margin-top:4px;min-height:16px"></div>
+    <div id="spec-pending-list" style="display:flex;flex-wrap:wrap;gap:5px;margin:8px 0;min-height:24px"></div>
+    <div class="modal-btns"><button class="btn btn-ghost" onclick="closeModal('modal-spec')">取消</button><button class="btn btn-primary" onclick="confirmSpec()">+ 加入購物車</button></div>
   </div>
 </div>
 
@@ -1917,6 +1920,7 @@ let heldCarts=[];
 let editingProductId=null,editingPromoId=null,editingSkuProductId=null;
 let editingPOId=null,editingMemberId=null;
 let specProductId=null,selectedColor=null,selectedSize=null;
+let specPendingSkus=[]; // 多選規格暫存
 let isDesktop=window.innerWidth>=768;
 let promoCatSelected=new Set(),promoSkuCodes='';
 let editingTiers=[];
@@ -3240,7 +3244,7 @@ function quickCheckout(method){
 function openSpec(id){
   const p=products.find(x=>x.id===id);if(!p)return;
   if(getPTotalStock(p)===0){alert('此商品已售完');return;}
-  specProductId=id;selectedColor=null;selectedSize=null;
+  specProductId=id;selectedColor=null;selectedSize=null;specPendingSkus=[];
   document.getElementById('spec-title').textContent=p.name+(p.skuCode?' ['+p.skuCode+']':'')+'  $'+p.price;
   const colors=p.colors?p.colors.split(',').map(x=>x.trim()).filter(Boolean):[];
   const sizes=p.sizes?p.sizes.split(',').map(x=>x.trim()).filter(Boolean):[];
@@ -3251,11 +3255,29 @@ function openSpec(id){
       const cst=p.skus?p.skus.filter(s=>s.color===c).reduce((a,b)=>a+b.stock,0):(p.stock||0);
       return `<button class="chip ${cst===0?'disabled':''}" onclick="${cst>0?'selectSpecColor(\''+c+'\',this)':''}">${c}${cst===0?'<span style="font-size:8px;display:block;color:var(--rd)">售完</span>':''}</button>`;
     }).join('');
-    if(colors.length===1){const cst=p.skus?p.skus.filter(s=>s.color===colors[0]).reduce((a,b)=>a+b.stock,0):(p.stock||0);if(cst>0){selectedColor=colors[0];document.querySelector('#spec-colors .chip').classList.add('selected');renderSpecSizes(p,sizes);}}
+    if(colors.length===1){
+      const cst=p.skus?p.skus.filter(s=>s.color===colors[0]).reduce((a,b)=>a+b.stock,0):(p.stock||0);
+      if(cst>0){
+        selectedColor=colors[0];
+        // 單色：顏色區域仍顯示但自動選取，尺寸可直接點
+        document.querySelector('#spec-colors .chip')?.classList.add('selected');
+        renderSpecSizes(p,sizes);
+      }
+    }
   }else{cs.style.display='none';selectedColor=null;}
   if(!colors.length){ss.style.display='';renderSpecSizes(p,sizes);}
-  else if(colors.length>1){ss.style.display='';document.getElementById('spec-sizes').innerHTML='<span style="color:var(--tx3);font-size:11px">請先選顏色</span>';}
+  else if(colors.length>1){
+    const hasFOnly2=!sizes.length||(sizes.length===1&&sizes[0]==='F');
+    if(hasFOnly2){
+      // F尺寸：不需要顯示尺寸區，點顏色直接加入
+      ss.style.display='none';
+    }else{
+      ss.style.display='';
+      document.getElementById('spec-sizes').innerHTML='<span style="color:var(--tx3);font-size:11px">請先選顏色</span>';
+    }
+  }
   document.getElementById('spec-stock-info').textContent='';
+  renderSpecPendingList();
   openModal('modal-spec');
 }
 function renderSpecSizes(p,sizes){
@@ -3265,50 +3287,109 @@ function renderSpecSizes(p,sizes){
   if(rs.length===1&&rs[0]==='F'){ss.style.display='none';selectedSize='F';updateSpecStockInfo(p);return;}
   document.getElementById('spec-sizes').innerHTML=rs.map(sz=>{
     const st=getSkuStock(p,selectedColor,sz);
-    return `<button class="chip size-chip ${st===0?'disabled':''}" onclick="${st>0?'selectSpecSize(\''+sz+'\',this)':''}">${sz}<span style="font-size:9px;display:block;color:${st===0?'var(--rd)':st<=3?'var(--yl)':'var(--tx3)'}">${st===0?'無貨':st}</span></button>`;
+    const isPending=specPendingSkus.some(x=>x.color===(selectedColor||'')&&x.size===sz);
+    return `<button class="chip size-chip ${st===0?'disabled':''} ${isPending?'selected':''}" onclick="${st>0?'selectSpecSize(\''+sz+'\',this)':''}">${sz}<span style="font-size:9px;display:block;color:${st===0?'var(--rd)':st<=3?'var(--yl)':'var(--tx3)'}">${st===0?'無貨':st}</span></button>`;
   }).join('');
   if(rs.length===1&&getSkuStock(p,selectedColor,rs[0])>0){selectedSize=rs[0];document.querySelector('#spec-sizes .chip')?.classList.add('selected');}
   updateSpecStockInfo(p);
 }
 function selectSpecColor(c,btn){
   selectedColor=c;selectedSize=null;
-  document.querySelectorAll('#spec-colors .chip').forEach(b=>b.classList.remove('selected'));btn.classList.add('selected');
+  // 顏色按鈕：只亮「當前選取」的顏色（不代表已加入）
+  document.querySelectorAll('#spec-colors .chip').forEach(b=>b.classList.remove('selected'));
   const p=products.find(x=>x.id===specProductId);if(!p)return;
-  renderSpecSizes(p,p.sizes?p.sizes.split(',').map(x=>x.trim()).filter(Boolean):[]);
+  const sizes=p.sizes?p.sizes.split(',').map(x=>x.trim()).filter(Boolean):[];
+  const hasFOnly=!sizes.length||(sizes.length===1&&sizes[0]==='F');
+  if(hasFOnly){
+    // 無尺寸商品：點顏色直接 toggle 加入暫選
+    const existIdx=specPendingSkus.findIndex(x=>x.color===c&&x.size==='F');
+    if(existIdx>=0)specPendingSkus.splice(existIdx,1);
+    else specPendingSkus.push({color:c,size:'F'});
+    // 根據 pending 更新顏色按鈕（已在 pending 的顯示綠框）
+    document.querySelectorAll('#spec-colors .chip').forEach(b=>{
+      const bColor=b.childNodes[0]?.textContent?.trim()||b.textContent.trim().split('\n')[0];
+      b.classList.toggle('selected',specPendingSkus.some(x=>x.color===bColor));
+    });
+    renderSpecPendingList();
+    selectedSize='F';
+  }else{
+    btn.classList.add('selected');
+    // 更新尺寸按鈕：已在 pending 的顯示綠框
+    renderSpecSizes(p,sizes);
+  }
 }
 function selectSpecSize(s,btn){
   selectedSize=s;
-  document.querySelectorAll('#spec-sizes .chip').forEach(b=>b.classList.remove('selected'));btn.classList.add('selected');
-  updateSpecStockInfo(products.find(x=>x.id===specProductId));
+  const p=products.find(x=>x.id===specProductId);if(!p)return;
+  const color=selectedColor||'';
+  const existIdx=specPendingSkus.findIndex(x=>x.color===color&&x.size===s);
+  if(existIdx>=0){
+    specPendingSkus.splice(existIdx,1);
+    btn.classList.remove('selected');
+  }else{
+    specPendingSkus.push({color,size:s});
+    btn.classList.add('selected');
+  }
+  updateSpecStockInfo(p);
+  renderSpecPendingList();
+  // 選完尺寸後：保留 selectedColor 讓顏色框繼續亮著
+  // 用戶若要選下一個顏色，自己點顏色即可
+  selectedSize=null;
+  // 顏色按鈕：目前選取的顏色保持亮框
+  document.querySelectorAll('#spec-colors .chip').forEach(b=>{
+    const bColor=b.childNodes[0]?.textContent?.trim()||b.textContent.trim().split('\n')[0];
+    b.classList.toggle('selected', bColor===color);
+  });
+  // 尺寸按鈕：已加入的保持綠框
+  document.querySelectorAll('#spec-sizes .chip').forEach(b=>{
+    const sz=b.childNodes[0]?.textContent?.trim()||b.textContent.trim().split('\n')[0];
+    b.classList.toggle('selected',specPendingSkus.some(x=>x.color===color&&x.size===sz));
+  });
 }
 function updateSpecStockInfo(p){
   if(!p)return;const el=document.getElementById('spec-stock-info');if(!el)return;
   if(selectedColor&&selectedSize){const st=getSkuStock(p,selectedColor,selectedSize);el.textContent=selectedColor+' / '+selectedSize+'  庫存：'+st+'件';el.style.color=st===0?'var(--rd)':st<=3?'var(--yl)':'var(--tx2)';}
   else el.textContent='';
 }
+function renderSpecPendingList(){
+  const el=document.getElementById('spec-pending-list');if(!el)return;
+  if(!specPendingSkus.length){el.innerHTML='<span style="font-size:11px;color:var(--tx3)">尚未選取規格</span>';return;}
+  el.innerHTML=specPendingSkus.map((s,i)=>`
+    <span style="display:inline-flex;align-items:center;gap:3px;background:rgba(192,104,127,.15);border:1.5px solid var(--ac);border-radius:20px;padding:3px 8px;font-size:11px;font-weight:700">
+      ${s.color}${s.size&&s.size!=='F'?'/'+s.size:''}
+      <button onclick="specPendingSkus.splice(${i},1);renderSpecPendingList();renderSpecColors();"
+        style="border:none;background:none;color:var(--rd);cursor:pointer;font-size:13px;line-height:1;padding:0 0 0 2px">×</button>
+    </span>`).join('');
+}
+function renderSpecColors(){
+  // 重新渲染規格按鈕，反映已選狀態
+  const p=products.find(x=>x.id===specProductId);if(!p)return;
+  document.querySelectorAll('#spec-sizes .chip').forEach(btn=>{
+    const sz=btn.textContent.trim().split('\n')[0];
+    const isSelected=specPendingSkus.some(x=>x.color===selectedColor&&x.size===sz);
+    btn.classList.toggle('selected',isSelected);
+  });
+}
 function confirmSpec(){
   const p=products.find(x=>x.id===specProductId);if(!p)return;
-  const colors=p.colors?p.colors.split(',').map(x=>x.trim()).filter(Boolean):[];
+  // 單色無尺寸商品：直接用 selectedColor 加入
   const sizes=p.sizes?p.sizes.split(',').map(x=>x.trim()).filter(Boolean):[];
-  const hasFOnly=sizes.length===1&&sizes[0]==='F';
-  if(colors.length&&!selectedColor){alert('請選擇顏色');return;}
-  if(sizes.length&&!hasFOnly&&!selectedSize){alert('請選擇尺寸');return;}
-  if(hasFOnly)selectedSize='F';
-  const avail=getSkuStock(p,selectedColor,selectedSize);
-  if(avail<=0){alert('此規格已無庫存');return;}
-  const key=`${p.id}__${selectedColor||''}__${selectedSize||''}`;
-  const ex=cart.find(x=>x.key===key);
-  if(ex){if(ex.qty>=avail){alert('已達庫存上限（'+avail+'件）');return;}ex.qty++;}
-  else cart.push({key,id:p.id,name:p.name,skuCode:p.skuCode||'',cat:p.cat,price:p.price,color:selectedColor,size:selectedSize,qty:1});
-  renderCart();updateCartBadge();
-  // 不關 modal，讓用戶可以繼續選其他顏色/規格
-  // 更新按鈕文字提示已加入
-  const btn=document.querySelector('#modal-spec .btn-primary');
-  if(btn){btn.textContent='✅ 已加入，可繼續選';setTimeout(()=>{if(btn)btn.textContent='加入購物車';},1500);}
-  // 重設選色狀態
-  selectedColor='';selectedSize='';
-  // 重新渲染規格按鈕（清除選取狀態）
-  const p2=products.find(x=>x.id===specProductId);if(p2)openSpecModal(p2.id);
+  const hasFOnly=!sizes.length||(sizes.length===1&&sizes[0]==='F');
+  if(hasFOnly&&selectedColor&&!specPendingSkus.length){
+    specPendingSkus.push({color:selectedColor,size:'F'});
+  }
+  if(!specPendingSkus.length){alert('請先選取規格');return;}
+  specPendingSkus.forEach(s=>{
+    const avail=getSkuStock(p,s.color,s.size);
+    if(avail<=0)return;
+    const key=`${p.id}__${s.color||''}__${s.size||''}`;
+    const ex=cart.find(x=>x.key===key);
+    if(ex){if(ex.qty<avail)ex.qty++;}
+    else cart.push({key,id:p.id,name:p.name,skuCode:p.skuCode||'',cat:p.cat,price:p.price,color:s.color,size:s.size,qty:1});
+  });
+  renderCart();updateCartBadge();updateTotals();
+  closeModal('modal-spec');
+  specPendingSkus=[];
 }
 
 // ============================================================
@@ -3516,23 +3597,82 @@ function changeQty(key,d){
   if(item.qty<=0)cart=cart.filter(x=>x.key!==key);
   renderCart();updateCartBadge();
 }
+function removeCartItem(key){
+  cart=cart.filter(x=>x.key!==key);
+  renderCart();updateCartBadge();updateTotals();
+}
+// 左滑刪除：touch 事件
+let _swipeStartX=0;
+function cartSwipeStart(e,el){
+  _swipeStartX=e.touches[0].clientX;
+  el._swiping=false;
+}
+function cartSwipeMove(e,el){
+  const dx=_swipeStartX-e.touches[0].clientX;
+  if(dx>10){
+    el._swiping=true;
+    const shift=Math.min(dx,80);
+    el.querySelector('.ci-row').style.transform=`translateX(-${shift}px)`;
+    const del=el.querySelector('.cart-swipe-delete');
+    if(del){del.style.opacity=Math.min(dx/80,1);del.style.pointerEvents=dx>40?'auto':'none';}
+    e.preventDefault();
+  }
+}
+function cartSwipeEnd(e,el){
+  const dx=_swipeStartX-e.changedTouches[0].clientX;
+  const row=el.querySelector('.ci-row');
+  const del=el.querySelector('.cart-swipe-delete');
+  if(dx>60){
+    // 滑夠遠 → 保持展開
+    if(row)row.style.transform='translateX(-70px)';
+    if(del){del.style.opacity='1';del.style.pointerEvents='auto';}
+    // 點其他地方收回
+    const closeSwipe=()=>{
+      if(row)row.style.transform='';
+      if(del){del.style.opacity='0';del.style.pointerEvents='none';}
+      document.removeEventListener('touchstart',closeSwipe);
+    };
+    setTimeout(()=>document.addEventListener('touchstart',closeSwipe),100);
+  }else{
+    if(row)row.style.transform='';
+    if(del){del.style.opacity='0';del.style.pointerEvents='none';}
+  }
+}
+function setCartQty(key,qty){
+  const item=cart.find(x=>x.key===key);if(!item)return;
+  const p=products.find(x=>x.id===item.id);
+  const avail=getSkuStock(p,item.color,item.size);
+  item.qty=Math.max(1,Math.min(qty,avail));
+  if(item.qty<=0)cart=cart.filter(x=>x.key!==key);
+  renderCart();updateCartBadge();updateTotals();
+}
 function clearCart(){cart=[];appliedCouponCode=null;qciCodesBuffer=[];renderCart();updateCartBadge();}
 function updateCartBadge(){const t=cart.reduce((s,i)=>s+i.qty,0);const b=document.getElementById('cart-count');if(b){b.textContent=t;b.classList.toggle('show',t>0);}}
 function renderCart(){
   const html=cart.length===0?'<div class="cart-empty">點選商品加入購物車</div>'
-    :cart.map(i=>`<div class="cart-item"><div class="ci-row">
-      <div class="ci-info">
-        <div class="ci-name">${i.name}${i.skuCode?` <span style="font-size:9px;color:var(--tx3)">${i.skuCode}</span>`:''}</div>
-        <div class="ci-spec">${[i.color,i.size&&i.size!=='F'?i.size:''].filter(Boolean).join(' / ')}</div>
-        <div class="ci-pu">$${i.price}/件</div>
+    :cart.map(i=>`<div class="cart-item" data-key="${i.key}">
+      <div class="ci-row">
+        <div class="ci-info">
+          <div class="ci-name">${i.name}${i.skuCode?` <span style="font-size:9px;color:var(--tx3)">${i.skuCode}</span>`:''}</div>
+          <div class="ci-spec">${[i.color,i.size&&i.size!=='F'?i.size:''].filter(Boolean).join(' / ')}</div>
+          <div class="ci-pu">$${i.price}/件</div>
+        </div>
+        <div class="qty-ctrl">
+          <button class="qty-btn" onclick="changeQty('${i.key}',-1)">−</button>
+          <input class="qty-num qty-input" type="number" value="${i.qty}" min="1"
+            onclick="this.select()"
+            onchange="setCartQty('${i.key}',parseInt(this.value)||1)"
+            onkeydown="if(event.key==='Enter')this.blur()"
+            style="width:36px;text-align:center;border:1px solid var(--bd);border-radius:5px;background:var(--sf2);padding:2px 0;font-size:12px;font-weight:700;font-family:'JetBrains Mono',monospace;color:var(--tx);-moz-appearance:textfield">
+          <button class="qty-btn" onclick="changeQty('${i.key}',1)">＋</button>
+        </div>
+        <div class="ci-total">$${(i.price*i.qty).toLocaleString()}</div>
+        <!-- 電腦版 ✕ 按鈕（手機隱藏） -->
+        <button onclick="removeCartItem('${i.key}')" class="ci-remove-btn"
+          style="width:20px;height:20px;border-radius:50%;border:none;background:rgba(248,81,73,.15);color:var(--rd);cursor:pointer;font-size:12px;font-weight:700;line-height:1;flex-shrink:0;display:flex;align-items:center;justify-content:center"
+          title="移除">✕</button>
       </div>
-      <div class="qty-ctrl">
-        <button class="qty-btn" onclick="changeQty('${i.key}',-1)">−</button>
-        <span class="qty-num">${i.qty}</span>
-        <button class="qty-btn" onclick="changeQty('${i.key}',1)">＋</button>
-      </div>
-      <div class="ci-total">$${(i.price*i.qty).toLocaleString()}</div>
-    </div></div>`).join('');
+    </div>`).join('');
   const de=document.getElementById('drawer-items');if(de)de.innerHTML=html;
   const dc=document.getElementById('d-cart-items');if(dc)dc.innerHTML=html;
   updateTotals();
@@ -4077,6 +4217,7 @@ function showReceipt(o){
     // 清空商品搜尋框
     ['pos-search','d-pos-search'].forEach(id=>{const e=document.getElementById(id);if(e)e.value='';});
     renderInventory();
+    updateCartBadge();
   },2000);
 }
 
@@ -5849,7 +5990,7 @@ function clearCart(){
   ['m-deposit-use','d-deposit-use'].forEach(id=>{const e=document.getElementById(id);if(e)e.value='';});
   usedDepositAmount=0;
   ['m-disc-input','d-disc-input'].forEach(id=>{const e=document.getElementById(id);if(e)e.value='';});
-  renderCart();updateTotals();
+  renderCart();updateCartBadge();updateTotals();
 }
 // ============================================================
 function exportInventoryExcel(){
