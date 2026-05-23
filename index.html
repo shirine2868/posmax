@@ -2595,13 +2595,12 @@ function renderDashboard(){
 
 function openRevenueDetail(){
   const todayStr=getTodayStr();
-  const todayOrd=orders.filter(o=>o.date===todayStr);
+  // 與儀表板保持相同過濾條件：排除已刪除
+  const todayOrd=orders.filter(o=>o.date===todayStr&&!o.deleted);
   // 各付款方式（排除儲值）
   const byMethod={};
   todayOrd.filter(o=>!o.isDeposit).forEach(o=>{
     if(o.payBreakdown?.length){
-      // 多付款方式：用 breakdown（amount 已正確）
-      // 但若 breakdown amount 加總為 0，改用 o.total 分配給主要付款方式
       const bTotal=o.payBreakdown.reduce((s,p)=>s+(p.amount||0),0);
       if(bTotal>0){
         o.payBreakdown.forEach(p=>{byMethod[p.method]=(byMethod[p.method]||0)+(p.amount||0);});
@@ -2609,13 +2608,12 @@ function openRevenueDetail(){
         byMethod[o.payMethod]=(byMethod[o.payMethod]||0)+o.total;
       }
     }else{
-      // 單一付款方式
-      byMethod[o.payMethod]=(byMethod[o.payMethod]||0)+o.total;
+      byMethod[o.payMethod]=(byMethod[o.payMethod]||0)+(o.total||0);
     }
   });
-  const totalRevenue=todayOrd.filter(o=>!o.isDeposit).reduce((s,o)=>s+o.total,0);
-  const totalRefund=todayOrd.reduce((s,o)=>s+((o.returns||[]).reduce((rs,r)=>rs+r.amount,0)),0);
-  const refundToPoints=todayOrd.reduce((s,o)=>s+((o.returns||[]).filter(r=>r.refundMethod==='points').reduce((rs,r)=>rs+r.amount,0)),0);
+  const totalRevenue=todayOrd.filter(o=>!o.isDeposit).reduce((s,o)=>s+(o.total||0),0);
+  const totalRefund=todayOrd.reduce((s,o)=>s+((o.returns||[]).reduce((rs,r)=>rs+(r.amount||0),0)),0);
+  const refundToPoints=todayOrd.reduce((s,o)=>s+((o.returns||[]).filter(r=>r.refundMethod==='points').reduce((rs,r)=>rs+(r.amount||0),0)),0);
   const refundCash=totalRefund-refundToPoints;
   const netRevenue=totalRevenue-refundCash;
   const depositTotal=todayOrd.filter(o=>o.isDeposit).reduce((s,o)=>s+o.total,0);
@@ -5171,7 +5169,7 @@ function openOrderDetail(id,uid){
   // 顯示編輯與刪除按鈕
   const editBtn=document.getElementById('od-edit-btn');
   const delBtn=document.getElementById('od-delete-btn');
-  if(editBtn){editBtn.style.display='';editBtn.dataset.oid=id;}
+  if(editBtn){editBtn.style.display='';editBtn.dataset.oid=id;editBtn.dataset.uid=uid??'';}
   if(delBtn){delBtn.style.display='';delBtn.dataset.oid=id;delBtn.dataset.uid=uid??'';}
   openModal('modal-order-detail');
 }
@@ -5216,11 +5214,15 @@ function deleteCurrentOrder(){
   closeModal('modal-order-detail');
   showNotif('✅ 訂單已刪除，庫存已補回，可在「已刪除」查看','var(--gn)');
 }
+let _editingOrderUid=null;
 function openOrderEdit(){
   const editBtn=document.getElementById('od-edit-btn');
   const oid=editBtn?.dataset.oid;
-  const o=orders.find(x=>String(x.id)===String(oid));if(!o)return;
+  const uid=editBtn?.dataset.uid;
+  const o=(uid?orders.find(x=>String(x._uid)===String(uid)):null)||orders.find(x=>String(x.id)===String(oid));
+  if(!o)return;
   _editingOrderId=o.id;
+  _editingOrderUid=o._uid!=null?String(o._uid):null;
   _editOrderItems=o.items.map(i=>({...i}));
   _oeSkuVal='';_oeSkuProduct=null;_oePreSel={};
   document.getElementById('oe-title').textContent='✏️ 編輯訂單 #'+o.id;
@@ -5228,10 +5230,13 @@ function openOrderEdit(){
   closeModal('modal-order-detail');
   openModal('modal-order-edit');
 }
-let _oeSkuVal='',_oeSkuProduct=null,_oePreSel={};
+function _findEditingOrder(){
+  return (_editingOrderUid!=null?orders.find(x=>String(x._uid)===String(_editingOrderUid)):null)
+    ||_findEditingOrder();
+}
 function renderOrderEditForm(){
   const el=document.getElementById('oe-content');if(!el)return;
-  const o=orders.find(x=>String(x.id)===String(_editingOrderId));
+  const o=_findEditingOrder();
   const member=o?.memberId?members.find(x=>x.id===o.memberId):null;
   // 付款方式選項
   const payOpts=payMethods.map(m=>`<option value="${m}"${m===(o?.payMethod||'')?' selected':''}>${m}</option>`).join('');
@@ -5417,17 +5422,17 @@ function _oeSearchMember(q){
 function _oeFillFirstMember(){const first=document.querySelector('#oe-member-results div[onclick]');if(first)first.click();}
 function _oeFillMember(id){
   const m=members.find(x=>x.id===id);if(!m)return;
-  const o=orders.find(x=>String(x.id)===String(_editingOrderId));if(o)o.memberId=id;
+  const o=_findEditingOrder();if(o)o.memberId=id;
   document.getElementById('oe-member-search').value='';
   renderOrderEditForm();
   showNotif('✅ 會員已帶入：'+m.name,'var(--gn)');
 }
 function _oeClearMember(){
-  const o=orders.find(x=>String(x.id)===String(_editingOrderId));if(o)o.memberId=null;
+  const o=_findEditingOrder();if(o)o.memberId=null;
   renderOrderEditForm();
 }
 function saveOrderEdit(){
-  const o=orders.find(x=>String(x.id)===String(_editingOrderId));if(!o)return;
+  const o=_findEditingOrder();if(!o)return;
   if(!_editOrderItems.length){showNotif('訂單至少要有一項商品','var(--rd)');return;}
   // 單號
   const newId=(document.getElementById('oe-order-id')?.value||'').trim();
