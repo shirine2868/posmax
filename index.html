@@ -3302,13 +3302,15 @@ function addInPosToCart(){
   if(!isDesktop)openCart();
   const totalQty=inPosPreorderItems.reduce((s,i)=>s+(i.qty||1),0);
   showNotif('✅ '+totalQty+' 件預訂商品已加入購物車','var(--gn)');
-  // 若有填客人姓名，同時儲存預訂單
+  // 儲存預訂單（延後到結帳後，使用相同流水號）
   const name=(document.getElementById(pfx+'inpos-cname')?.value||'').trim();
-  if(name)_doSaveInPosPreorder(pfx,true);
+  const _pendingPreorderSave={pfx,name};
   switchPosTab('pos');
   // 清空預訂單表單
   inPosPreorderItems=[];
   setTimeout(()=>initInPosPreorder(),100);
+  // 結帳完成後自動儲存預訂單（由 checkout() 呼叫 _afterCheckoutSavePreorder）
+  if(name)window._pendingPreorderSave=_pendingPreorderSave;
 }
 
 function saveInPosPreorder(pfx=''){
@@ -3323,7 +3325,7 @@ function saveInPosPreorder(pfx=''){
   setTimeout(()=>initInPosPreorder(),100);
 }
 
-function _doSaveInPosPreorder(pfx,silent){
+function _doSaveInPosPreorder(pfx,silent,linkedOrderId){
   const name=(document.getElementById(pfx+'inpos-cname')?.value||document.getElementById('inpos-cname')?.value||document.getElementById('d-inpos-cname')?.value||'').trim();
   const phone=(document.getElementById(pfx+'inpos-cphone')?.value||document.getElementById('inpos-cphone')?.value||document.getElementById('d-inpos-cphone')?.value||'').trim();
   if(!name||!inPosPreorderItems.length)return;
@@ -3333,8 +3335,10 @@ function _doSaveInPosPreorder(pfx,silent){
   const sub=inPosPreorderItems.reduce((s,i)=>s+(i.price||0)*(i.qty||1),0);
   const finalAmount=Math.max(0,sub-disc);
   const balance=Math.max(0,finalAmount-deposit);
+  // 若有 linkedOrderId 就用 PO+orderId（不消耗新流水號），否則生成新的
+  const poId=linkedOrderId?('PO'+linkedOrderId):genPreorderId();
   const newPo={
-    id:genPreorderId(),
+    id:poId,
     status:'purchasing',
     createdAt:new Date().toLocaleDateString('zh-TW'),
     statusLog:[{status:'purchasing',date:(()=>{const _d=new Date();return _d.getFullYear()+'/'+((_d.getMonth()+1))+'/'+_d.getDate();})(),time:new Date().toLocaleTimeString('zh-TW',{hour:'2-digit',minute:'2-digit'})}],
@@ -3346,7 +3350,8 @@ function _doSaveInPosPreorder(pfx,silent){
     deposit,balance,
     remark:(_getVal('inpos-remark')||'').trim(),
     items:inPosPreorderItems.map(i=>({...i})),
-    totalAmount:sub,discount:disc,finalAmount
+    totalAmount:sub,discount:disc,finalAmount,
+    linkedOrderId:linkedOrderId||null,
   };
   preorders.unshift(newPo);
   savePreorderData();updatePreorderBadge();
@@ -4548,6 +4553,12 @@ function checkout(method, payBreakdown=[], change=0){
   };
   order._uid=orders.length; // 唯一識別碼
   orders.push(order);
+  // 若有待存的預訂單（從預訂 tab 結帳），使用相同流水號
+  if(window._pendingPreorderSave){
+    const pps=window._pendingPreorderSave;
+    window._pendingPreorderSave=null;
+    _doSaveInPosPreorder(pps.pfx,true,orderId);
+  }
   // 處理退換貨訂單記錄
   if(cartReturnOrderId&&cartReturnDisc>0){
     const retOrder=orders.find(x=>x.id===cartReturnOrderId);
