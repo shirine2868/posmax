@@ -45,25 +45,22 @@ async function fbLoad() {
 
 function fbListen() {
   if (!db) return;
-  // 監聽整個 posdata collection 的變更
+  // 只監聽雲端變更並通知，不自動覆蓋本地資料
+  // （避免本地修改後雲端舊版本反蓋回來）
   db.collection('posdata').onSnapshot({ includeMetadataChanges: false }, snap => {
+    let hasRemoteChange = false;
     snap.docChanges().forEach(change => {
       if (change.type === 'modified' || change.type === 'added') {
-        const key = change.doc.id;
         const data = change.doc.data();
-        if (!data.value) return;
-        // 避免自己觸發自己的更新
-        if (data.updatedAt && Date.now() - data.updatedAt < 3000) {
-          // 3秒內自己寫的不重新套用
-          return;
-        }
-        try {
-          const val = JSON.parse(data.value);
-          applyRemoteData(key, val);
-          console.log('📥 收到遠端更新:', key);
-        } catch(e) {}
+        // 自己 3 秒內寫的不算外部變更
+        if (data.updatedAt && Date.now() - data.updatedAt < 3000) return;
+        hasRemoteChange = true;
       }
     });
+    // 只顯示提示，不自動覆蓋
+    if (hasRemoteChange) {
+      console.log('📥 雲端有更新，但不自動同步（需手動點「同步」才下載）');
+    }
   }, e => console.warn('Firebase 監聽失敗:', e));
 }
 
@@ -105,13 +102,14 @@ function applyRemoteData(key, val) {
   } catch(e) { console.warn('applyRemoteData 失敗:', key, e); }
 }
 
-// 手動強制同步（從雲端拉最新資料）
+// 手動強制同步（從雲端拉最新資料）— 需確認，不自動覆蓋
 async function manualSync() {
   if (!_fbSyncEnabled || !db) {
     showNotif('⚠️ 未連線到雲端','var(--yl)');
     return;
   }
-  showNotif('🔄 同步中...','var(--ac)');
+  if(!confirm('⚠️ 確定要從雲端下載資料？\n\n這將會用雲端備份覆蓋目前本機的資料，\n本機未上傳的變更將會遺失。\n\n建議先點「上傳」備份後再同步。'))return;
+  showNotif('🔄 從雲端下載資料中...','var(--ac)');
   const data = await fbLoad();
   if (!data) { showNotif('❌ 同步失敗，請檢查網路','var(--rd)'); return; }
   if (data.products) { products=data.products; renderInventory(); renderProducts(); }
@@ -276,6 +274,7 @@ function checkAutoBackup(){
 
 function uploadAllToCloud(){
   if(!_fbSyncEnabled||!db){showNotif('⚠️ 未連線到雲端','var(--yl)');return;}
+  if(!confirm('確定要將本機資料上傳到雲端備份？\n\n這將覆蓋雲端上的舊版備份。'))return;
   fbSave('products',products);fbSave('orders',orders);
   fbSave('members',members);fbSave('promos',promos);
   fbSave('coupons',coupons);fbSave('purchaseOrders',purchaseOrders);
@@ -386,26 +385,28 @@ html,body{height:100%;width:100%;overflow:hidden;max-width:100vw;font-family:'No
 .cart-overlay.open{display:block;pointer-events:auto}
 .cart-drawer{
   position:fixed;
-  bottom:var(--nh);
+  top:0;bottom:0;
   left:0;right:0;
   z-index:190;
   background:var(--sf);
-  border-radius:18px 18px 0 0;
+  border-radius:0;
   transform:translateY(110%);
   transition:transform .28s cubic-bezier(.4,0,.2,1);
-  max-height:calc(100svh - var(--tb) - var(--nh));
+  height:100svh;
+  max-height:100svh;
   display:flex;
   flex-direction:column;
   pointer-events:none;
   visibility:hidden;
+  overflow:hidden;
 }
 .cart-drawer.open{transform:translateY(0);pointer-events:auto;visibility:visible}
-.drawer-handle{width:34px;height:4px;background:var(--sf3);border-radius:2px;margin:10px auto 0;flex-shrink:0}
-.drawer-header{padding:8px 15px 10px;border-bottom:1px solid var(--bd);display:flex;align-items:center;justify-content:space-between;flex-shrink:0}
+.drawer-handle{display:none}
+.drawer-header{padding:12px 15px 10px;padding-top:calc(12px + env(safe-area-inset-top));border-bottom:1px solid var(--bd);display:flex;align-items:center;justify-content:space-between;flex-shrink:0}
 .drawer-title{font-weight:700;font-size:16px}
 .drawer-close{background:var(--sf2);border:none;color:var(--tx2);width:27px;height:27px;border-radius:50%;cursor:pointer;font-size:17px;display:flex;align-items:center;justify-content:center}
-/* 商品列表：最多佔 40%，其餘給 footer */
-.drawer-items{flex:0 1 auto;overflow-y:auto;padding:7px 9px;min-height:60px;max-height:28vh}
+/* 商品列表：全螢幕模式下自動撐滿剩餘空間 */
+.drawer-items{flex:1 1 auto;overflow-y:auto;padding:7px 9px;min-height:60px}
 .cart-empty{text-align:center;padding:20px;color:var(--tx3);font-size:15px}
 .cart-item{background:var(--sf2);border-radius:9px;padding:8px 9px;margin-bottom:5px}
 .ci-row{display:flex;align-items:center;gap:7px}
@@ -588,6 +589,10 @@ html,body{height:100%;width:100%;overflow:hidden;max-width:100vw;font-family:'No
 .orders-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px}
 /* SETTINGS */
 .settings-section{background:var(--sf);border:1px solid var(--bd);border-radius:var(--r);padding:12px 13px;margin-bottom:8px}
+.settings-collapsible>.settings-section-title{cursor:pointer;user-select:none;display:flex;align-items:center;justify-content:space-between}
+.settings-collapsible>.settings-section-title::after{content:'▾';font-size:12px;color:var(--tx3);transition:transform .2s;margin-left:6px;flex-shrink:0}
+.settings-collapsible.collapsed>.settings-section-title::after{transform:rotate(-90deg)}
+.settings-collapsible.collapsed>*:not(.settings-section-title){display:none!important}
 .settings-section-title{font-size:12px;font-weight:700;color:var(--tx3);text-transform:uppercase;letter-spacing:.8px;margin-bottom:9px}
 .setting-row{display:flex;align-items:center;gap:9px;padding:8px 0;border-bottom:1px solid var(--bd)}
 .setting-row:last-child{border-bottom:none}
@@ -648,8 +653,8 @@ html,body{height:100%;width:100%;overflow:hidden;max-width:100vw;font-family:'No
 <div class="topbar">
   <div class="tl">⚡ POSMAX</div>
   <span class="tbadge">● 營業中</span>
-  <button onclick="manualSync()" style="background:rgba(192,104,127,.15);border:1px solid rgba(192,104,127,.3);color:var(--ac);padding:2px 6px;border-radius:20px;font-size:9px;font-weight:700;cursor:pointer;font-family:inherit" title="從雲端同步最新資料">☁️ 同步</button>
-  <button onclick="uploadAllToCloud()" style="background:rgba(45,158,107,.15);border:1px solid rgba(45,158,107,.3);color:var(--gn);padding:2px 6px;border-radius:20px;font-size:9px;font-weight:700;cursor:pointer;font-family:inherit" title="上傳本地資料到雲端">⬆️ 上傳</button>
+  <button onclick="manualSync()" style="background:rgba(192,104,127,.15);border:1px solid rgba(192,104,127,.3);color:var(--ac);padding:2px 6px;border-radius:20px;font-size:9px;font-weight:700;cursor:pointer;font-family:inherit" title="從雲端下載資料（會覆蓋本機，需確認）">☁️ 同步</button>
+  <button onclick="uploadAllToCloud()" style="background:rgba(45,158,107,.15);border:1px solid rgba(45,158,107,.3);color:var(--gn);padding:2px 6px;border-radius:20px;font-size:9px;font-weight:700;cursor:pointer;font-family:inherit" title="將本機資料備份上傳至雲端">⬆️ 上傳</button>
   <span class="tclock" id="clock"></span>
   <button class="icon-btn" onclick="resetData()">重置</button>
 </div>
@@ -885,13 +890,13 @@ html,body{height:100%;width:100%;overflow:hidden;max-width:100vw;font-family:'No
       <button class="btn btn-ghost btn-sm" style="margin-top:8px" onclick="downloadExcelTemplate()">⬇️ 下載範例 Excel</button>
     </div>
     <!-- 會員管理入口（手機版） -->
-    <div class="settings-section" style="margin-bottom:10px">
-      <div class="settings-section-title">👤 會員管理</div>
+    <div class="settings-section settings-collapsible" style="margin-bottom:10px">
+      <div class="settings-section-title" onclick="this.parentElement.classList.toggle('collapsed')">👤 會員管理</div>
       <button class="btn btn-primary" style="width:100%;padding:11px;font-size:13px" onclick="isDesktop?showPage('members',document.createElement('button')):showPageMobile('members',document.createElement('button'))">👤 前往會員管理</button>
     </div>
     <!-- 折扣優惠 -->
-    <div class="settings-section">
-      <div class="settings-section-title">🏷️ 折扣優惠</div>
+    <div class="settings-section settings-collapsible">
+      <div class="settings-section-title" onclick="this.parentElement.classList.toggle('collapsed')">🏷️ 折扣優惠</div>
       <div id="promo-summary" style="font-size:12px;color:var(--tx2);margin-bottom:8px"></div>
       <div style="display:flex;gap:7px">
         <button class="btn btn-primary" style="flex:1" onclick="openAddPromo()">＋ 新增優惠</button>
@@ -908,8 +913,8 @@ html,body{height:100%;width:100%;overflow:hidden;max-width:100vw;font-family:'No
       </div>
     </div>
     <!-- 付款方式 -->
-    <div class="settings-section">
-      <div class="settings-section-title">💳 結帳付款方式</div>
+    <div class="settings-section settings-collapsible">
+      <div class="settings-section-title" onclick="this.parentElement.classList.toggle('collapsed')">💳 結帳付款方式</div>
       <div id="pay-methods-list"></div>
       <div style="display:flex;gap:7px;margin-top:8px">
         <input class="form-input" id="new-pay-name" placeholder="新增付款方式名稱" style="flex:1" data-enter-handled onkeydown="if(event.key==='Enter')addPayMethod()">
@@ -917,14 +922,14 @@ html,body{height:100%;width:100%;overflow:hidden;max-width:100vw;font-family:'No
       </div>
     </div>
     <!-- 廠商 -->
-    <div class="settings-section">
-      <div class="settings-section-title">🏭 廠商名單</div>
+    <div class="settings-section settings-collapsible">
+      <div class="settings-section-title" onclick="this.parentElement.classList.toggle('collapsed')">🏭 廠商名單</div>
       <div id="vendor-summary" style="font-size:12px;color:var(--tx2);margin-bottom:8px"></div>
       <button class="btn btn-ghost" style="width:100%" onclick="openVendorManager()">📋 管理廠商名單</button>
     </div>
     <!-- 會員升等設定 -->
-    <div class="settings-section">
-      <div class="settings-section-title">👑 會員升等設定</div>
+    <div class="settings-section settings-collapsible">
+      <div class="settings-section-title" onclick="this.parentElement.classList.toggle('collapsed')">👑 會員升等設定</div>
       <div id="member-tier-list"></div>
       <div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap">
         <input class="form-input" id="new-tier-name" placeholder="等級名稱（如VIP）" style="flex:1.5;min-width:100px" data-enter-handled onkeydown="if(event.key==='Enter')addMemberTier()">
@@ -933,8 +938,8 @@ html,body{height:100%;width:100%;overflow:hidden;max-width:100vw;font-family:'No
       </div>
     </div>
     <!-- 低庫存門檻設定 -->
-    <div class="settings-section" style="margin-bottom:10px">
-      <div class="settings-section-title">⚠️ 低庫存提醒設定</div>
+    <div class="settings-section settings-collapsible" style="margin-bottom:10px">
+      <div class="settings-section-title" onclick="this.parentElement.classList.toggle('collapsed')">⚠️ 低庫存提醒設定</div>
       <div style="font-size:12px;color:var(--tx2);margin-bottom:8px">當商品庫存低於門檻時，儀表板會顯示低庫存警告</div>
       <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
         <span style="font-size:12px;color:var(--tx2)">低庫存門檻</span>
@@ -959,14 +964,14 @@ html,body{height:100%;width:100%;overflow:hidden;max-width:100vw;font-family:'No
       <button class="btn btn-primary btn-sm" style="margin-top:8px" onclick="savePointsSettings()">儲存設定</button>
     </div>
     <!-- 預設顏色 -->
-    <div class="settings-section">
-      <div class="settings-section-title">🎨 預設顏色選單</div>
+    <div class="settings-section settings-collapsible">
+      <div class="settings-section-title" onclick="this.parentElement.classList.toggle('collapsed')">🎨 預設顏色選單</div>
       <div id="preset-colors-list" style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:10px;min-height:30px"></div>
       <div style="display:flex;gap:7px"><input class="form-input" id="new-color" placeholder="新增顏色名稱" style="flex:1" data-enter-handled onkeydown="if(event.key==='Enter')addPresetColor()"><button class="btn btn-primary" onclick="addPresetColor()">新增</button></div>
     </div>
     <!-- 預設尺寸 -->
-    <div class="settings-section">
-      <div class="settings-section-title">📐 預設尺寸選單</div>
+    <div class="settings-section settings-collapsible">
+      <div class="settings-section-title" onclick="this.parentElement.classList.toggle('collapsed')">📐 預設尺寸選單</div>
       <div id="preset-sizes-list" style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:10px;min-height:30px"></div>
       <div style="display:flex;gap:7px"><input class="form-input" id="new-size" placeholder="新增尺寸" style="flex:1" data-enter-handled onkeydown="if(event.key==='Enter')addPresetSize()"><button class="btn btn-primary" onclick="addPresetSize()">新增</button></div>
     </div>
@@ -1073,23 +1078,16 @@ html,body{height:100%;width:100%;overflow:hidden;max-width:100vw;font-family:'No
     <h3 id="preorder-modal-title">📝 新增預訂單</h3>
     <!-- 客人資料 -->
     <div style="background:rgba(88,166,255,.06);border:1px solid rgba(88,166,255,.2);border-radius:9px;padding:10px 12px;margin-bottom:10px">
-      <div style="font-size:10px;font-weight:700;color:var(--ac);margin-bottom:8px">👤 客人資料</div>
-      <div class="form-row">
-        <div class="form-group">
-          <label class="form-label">姓名 *</label>
-          <input class="form-input" id="po-cname" placeholder="客人姓名">
-        </div>
-        <div class="form-group">
-          <label class="form-label">電話 / LINE</label>
-          <input class="form-input" id="po-cphone" placeholder="0912-345-678">
+      <input class="form-input" id="po-member-search" placeholder="🔍 輸入姓名、電話搜尋會員，或直接輸入客人姓名" style="width:100%;font-size:13px;padding:8px 11px" oninput="searchPreorderMember()" onkeydown="if(event.key==='Enter'){event.preventDefault();const first=document.querySelector('#po-member-results div[onclick]');if(first)first.click();}">
+      <div id="po-member-results" style="max-height:120px;overflow-y:auto;margin-top:4px"></div>
+      <!-- 姓名電話（帶入會員後顯示，或點「手動輸入」後顯示） -->
+      <div id="po-manual-fields" style="display:none;margin-top:7px;display:none">
+        <div style="display:flex;gap:7px">
+          <input class="form-input" id="po-cname" placeholder="客人姓名 *" style="flex:1">
+          <input class="form-input" id="po-cphone" placeholder="電話 / LINE" style="flex:1">
         </div>
       </div>
-      <!-- 搜尋現有會員 -->
-      <div style="font-size:10px;color:var(--tx3);margin-top:-4px;margin-bottom:5px">或搜尋現有會員快速帶入：</div>
-      <div style="display:flex;gap:6px">
-        <input class="form-input" id="po-member-search" placeholder="輸入會員姓名或電話" style="flex:1;font-size:12px;padding:7px 10px" oninput="searchPreorderMember()" onkeydown="if(event.key==='Enter'){event.preventDefault();const first=document.querySelector('#po-member-results div[onclick]');if(first)first.click();}">
-      </div>
-      <div id="po-member-results" style="max-height:120px;overflow-y:auto;margin-top:5px"></div>
+      <button onclick="document.getElementById('po-manual-fields').style.display=document.getElementById('po-manual-fields').style.display==='none'?'block':'none'" style="background:none;border:none;font-size:11px;color:var(--tx3);cursor:pointer;text-decoration:underline;margin-top:5px;padding:0">＋ 手動輸入姓名與電話</button>
     </div>
     <!-- 訂購商品 -->
     <div style="background:rgba(63,185,80,.06);border:1px solid rgba(63,185,80,.2);border-radius:9px;padding:10px 12px;margin-bottom:10px">
@@ -1100,11 +1098,7 @@ html,body{height:100%;width:100%;overflow:hidden;max-width:100vw;font-family:'No
       <div id="po-items-form"></div>
     </div>
     <!-- 訂單資訊 -->
-    <div class="form-row">
-      <div class="form-group">
-        <label class="form-label">訂單日期</label>
-        <input class="form-input" id="po-date" type="date">
-      </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">
       <div class="form-group">
         <label class="form-label">訂單來源</label>
         <select class="form-input" id="po-source">
@@ -1114,26 +1108,24 @@ html,body{height:100%;width:100%;overflow:hidden;max-width:100vw;font-family:'No
           <option value="其他">其他</option>
         </select>
       </div>
-    </div>
-    <div class="form-row">
       <div class="form-group">
         <label class="form-label">預計到貨日</label>
         <input class="form-input" id="po-eta" type="date">
       </div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">
       <div class="form-group">
         <label class="form-label">訂金 $（選填）</label>
         <input class="form-input" id="po-deposit" type="number" min="0" placeholder="0" oninput="updatePoModalTotal()">
       </div>
-    </div>
-    <div class="form-row">
       <div class="form-group">
         <label class="form-label">折扣 $（選填）</label>
         <input class="form-input" id="po-discount" type="number" min="0" placeholder="0" oninput="updatePoModalTotal()">
       </div>
-      <div class="form-group">
-        <label class="form-label">仍需支付</label>
-        <div id="po-balance-display" style="padding:8px 12px;background:var(--sf2);border-radius:8px;font-family:'JetBrains Mono',monospace;font-weight:700;color:var(--yl);font-size:14px">—</div>
-      </div>
+    </div>
+    <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;margin-bottom:4px">
+      <span style="font-size:13px;color:var(--tx2)">仍需支付</span>
+      <span id="po-balance-display" style="font-family:'JetBrains Mono',monospace;font-weight:700;color:var(--yl);font-size:15px">—</span>
     </div>
     <div class="form-group">
       <label class="form-label">備註</label>
@@ -1159,6 +1151,7 @@ html,body{height:100%;width:100%;overflow:hidden;max-width:100vw;font-family:'No
     <div class="modal-btns" style="margin-top:10px">
       <button class="btn btn-ghost" onclick="closeModal('modal-preorder-detail')">關閉</button>
       <button class="btn btn-ghost" onclick="editPreorderFromDetail()" style="color:var(--ac)">✏️ 編輯</button>
+      <button id="pod-delete-btn" onclick="" style="background:none;border:1px solid var(--rd);border-radius:8px;color:var(--rd);padding:6px 10px;cursor:pointer;font-size:16px;flex-shrink:0" title="刪除此預訂單">🗑</button>
     </div>
   </div>
 </div>
@@ -1663,6 +1656,11 @@ html,body{height:100%;width:100%;overflow:hidden;max-width:100vw;font-family:'No
   <div class="modal" style="overflow-x:hidden">
     <div class="modal-handle"></div>
     <h3 id="po-modal-title">新增採購單</h3>
+    <!-- 進貨單號（草稿編輯時顯示） -->
+    <div id="po-id-row" style="display:none;margin-bottom:8px">
+      <label class="form-label">進貨單號</label>
+      <input class="form-input" id="po-id-input" placeholder="進貨單號" style="font-family:'JetBrains Mono',monospace">
+    </div>
     <!-- 基本資訊 -->
     <div class="form-row">
       <div class="form-group"><label class="form-label">廠商</label><select class="form-input" id="po-vendor" style="cursor:pointer"></select></div>
@@ -1841,17 +1839,8 @@ function save(){
     localStorage.setItem(KEYS.memberTiers,JSON.stringify(memberTiers));
     localStorage.setItem(KEYS.pointsSettings,JSON.stringify(pointsSettings));
     localStorage.setItem(KEYS.expenses,JSON.stringify(expenses));
-    // Firebase 雲端同步（全部資料）
-    if(typeof fbSave==='function'){
-      fbSave('products',products);fbSave('orders',orders);
-      fbSave('categories',categories);fbSave('promos',promos);
-      fbSave('coupons',coupons);fbSave('vendors',vendors);
-      fbSave('purchaseOrders',purchaseOrders);fbSave('expenses',expenses);
-      fbSave('memberTiers',memberTiers);fbSave('pointsSettings',pointsSettings);
-      fbSave('payMethods',payMethods);fbSave('members',members);
-      fbSave('presetColors',presetColors);fbSave('presetSizes',presetSizes);
-      fbSave('preorders',preorders);
-    }
+    // ⚠️ 不自動同步到雲端，避免本地修改蓋掉雲端備份
+    // 請手動點「上傳」按鈕將本地資料備份到雲端
   }catch(e){console.warn(e)}
 }
 function load(){
@@ -1889,6 +1878,7 @@ function load(){
     presetColors=g(KEYS.presetColors,DEFAULT_COLORS);
     presetSizes=g(KEYS.presetSizes,DEFAULT_SIZES);
     purchaseOrders=g(KEYS.purchaseOrders,[]);
+    _assignPoUids();
     nextPoId=parseInt(localStorage.getItem(KEYS.nextPoId)||'1');
     members=g(KEYS.members,[]);
     nextMemberSeq=parseInt(localStorage.getItem(KEYS.nextMemberSeq)||'1');
@@ -1908,9 +1898,8 @@ function genOrderId(){
   if(!orderSeq[ymd])orderSeq[ymd]=1;
   const seq=orderSeq[ymd]++;
   try{localStorage.setItem(KEYS.orderSeq,JSON.stringify(orderSeq));}catch(e){}
-  return ymd+seq.toString().padStart(4,'0');
+  return ymd+seq.toString().padStart(3,'0');
 }
-
 // ============================================================
 // PRODUCT DATA STRUCTURE
 // skus: [{color,size,stock}]
@@ -1968,6 +1957,32 @@ let vendors=[],payMethods=[...DEFAULT_PAY_METHODS];
 let expenses=[],nextExpenseId=1;
 let presetColors=[...DEFAULT_COLORS],presetSizes=[...DEFAULT_SIZES];
 let purchaseOrders=[],nextPoId=1;
+function _assignPoUids(){
+  purchaseOrders.forEach((po,i)=>{if(po._uid==null)po._uid=i;});
+  // 草稿若有 ID 與其他進貨單重複，自動換成日期格式新 ID
+  const seen=new Set();
+  purchaseOrders.forEach(po=>{
+    if(po.status!=='draft'){seen.add(String(po.id));return;}
+    if(seen.has(String(po.id))){
+      // 衝突：給草稿一個新的唯一 ID
+      const now=new Date();
+      const ds=now.getFullYear().toString()+String(now.getMonth()+1).padStart(2,'0')+String(now.getDate()).padStart(2,'0');
+      if(!orderSeq['n_'+ds])orderSeq['n_'+ds]=1;
+      po.id='N'+ds+String(orderSeq['n_'+ds]++).padStart(3,'0');
+      try{localStorage.setItem(KEYS.orderSeq,JSON.stringify(orderSeq));}catch(e){}
+    }
+    seen.add(String(po.id));
+  });
+}
+
+function genPOId(){
+  const now=new Date();
+  const ds=now.getFullYear().toString()+String(now.getMonth()+1).padStart(2,'0')+String(now.getDate()).padStart(2,'0');
+  if(!orderSeq['n_'+ds])orderSeq['n_'+ds]=1;
+  const seq=orderSeq['n_'+ds]++;
+  try{localStorage.setItem(KEYS.orderSeq,JSON.stringify(orderSeq));}catch(e){}
+  return 'N'+ds+String(seq).padStart(3,'0');
+}
 let members=[],nextMemberSeq=1;
 let memberTiers=[...DEFAULT_MEMBER_TIERS];
 let pointsSettings={...DEFAULT_POINTS_SETTINGS};
@@ -2279,6 +2294,10 @@ function dOpenPOModal(){
   const dm=document.getElementById('d-modal-po');if(!dm)return;
   const body=document.getElementById('d-po-modal-body');
   body.innerHTML=`
+    <div id="d-po-id-row" style="margin-bottom:10px">
+      <label class="form-label">進貨單號</label>
+      <input class="form-input" id="d-po-id-input" placeholder="進貨單號" style="font-family:'JetBrains Mono',monospace">
+    </div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:10px">
       <div><label class="form-label">廠商</label><select class="form-input" id="d-po-vendor" style="cursor:pointer"></select></div>
       <div><label class="form-label">採購日期</label><input class="form-input" id="d-po-date" type="date"></div>
@@ -2316,8 +2335,8 @@ function dOpenPOModal(){
   setTimeout(()=>document.getElementById('d-po-quick-sku')?.focus(),100);
 }
 function dOpenPODetailForEdit(id){
-  const po=purchaseOrders.find(x=>x.id===id);if(!po)return;
-  editingPOId=id;poItems=po.items.map(i=>({...i}));
+  const po=purchaseOrders.find(x=>String(x.id)===String(id));if(!po)return;
+  editingPOId=po._uid;poItems=po.items.map(i=>({...i}));
   dOpenPOModal();
   document.getElementById('d-po-modal-title').textContent='編輯採購單 #'+id;
   setTimeout(()=>{
@@ -2450,19 +2469,22 @@ function dSavePO(status){
   const items=poItems.filter(i=>i.productName||i.skuCode||i.vendorSku);
   if(!items.length){alert('請至少新增一個採購品項');return;}
   const poData={vendorId,date,note,extraCost,prepaid,status,items:items.map(i=>({...i}))};
-  if(editingPOId){
-    const eIdx=purchaseOrders.findIndex(x=>x.id===editingPOId);
+  if(editingPOId!=null){
+    const eIdx=typeof editingPOId==='number'&&editingPOId<purchaseOrders.length?editingPOId:purchaseOrders.findIndex(x=>String(x._uid)===String(editingPOId));
     if(eIdx!==-1){
       if(status==='done'&&purchaseOrders[eIdx].status==='draft'){
         purchaseOrders.splice(eIdx,1);
-        purchaseOrders.push({id:nextPoId++,...poData});
+        const _newPo={id:genPOId(),...poData};_newPo._uid=purchaseOrders.length;purchaseOrders.push(_newPo);
       } else {
         Object.assign(purchaseOrders[eIdx],poData);
+        // 更新單號
+        const newId=(document.getElementById('d-po-id-input')?.value||'').trim();
+        if(newId)purchaseOrders[eIdx].id=newId;
       }
     }
     editingPOId=null;
   } else {
-    purchaseOrders.push({id:nextPoId++,...poData});
+    const _newPo={id:genPOId(),...poData};_newPo._uid=purchaseOrders.length;purchaseOrders.push(_newPo);
   }
   if(status==='done'){
     items.forEach(item=>{
@@ -3336,7 +3358,7 @@ function _doSaveInPosPreorder(pfx,silent,linkedOrderId){
   const finalAmount=Math.max(0,sub-disc);
   const balance=Math.max(0,finalAmount-deposit);
   // 若有 linkedOrderId 就用 PO+orderId（不消耗新流水號），否則生成新的
-  const poId=linkedOrderId?('PO'+linkedOrderId):genPreorderId();
+  const poId=linkedOrderId?('P'+linkedOrderId):genPreorderId();
   const newPo={
     id:poId,
     status:'purchasing',
@@ -3354,7 +3376,7 @@ function _doSaveInPosPreorder(pfx,silent,linkedOrderId){
     linkedOrderId:linkedOrderId||null,
   };
   preorders.unshift(newPo);
-  savePreorderData();updatePreorderBadge();
+  savePreorderData();updatePreorderBadge();renderPOs();
   if(!silent)showNotif('✅ 預訂單 #'+newPo.id+' 已建立','var(--gn)');
 }
 
@@ -4635,6 +4657,34 @@ function renderInventory(){
   const mInv=document.getElementById('inv-list');if(mInv)mInv.innerHTML='';
   setTimeout(()=>{if(v===_renderInvVersion)_doRenderInventory();},150);
 }
+let _draftIncoming={};
+function _buildDraftIncoming(){
+  _draftIncoming={};
+  purchaseOrders.filter(po=>po.status==='draft').forEach(po=>{
+    po.items.forEach(item=>{
+      const sc=(item.skuCode||'').toUpperCase();
+      const parts=(item.skuDesc||'').split('/');
+      const color=(parts[0]||'').trim();
+      const size=(parts[1]||'').trim();
+      const qty=item.qty||1;
+      if(sc){
+        const k=sc+'|'+(color||'')+'|'+(size||'');
+        _draftIncoming[k]=(_draftIncoming[k]||0)+qty;
+      }
+    });
+  });
+}
+function _getIncomingQty(skuCode,color,size){
+  if(!skuCode)return 0;
+  const k=skuCode.toUpperCase()+'|'+(color||'')+'|'+(size||'F');
+  return _draftIncoming[k]||0;
+}
+function _getIncomingTotal(skuCode,productName){
+  const sc=(skuCode||'').toUpperCase();
+  if(!sc)return 0;
+  return Object.entries(_draftIncoming).filter(([k])=>k.startsWith(sc+'|')).reduce((s,[,v])=>s+v,0);
+}
+
 function _doRenderInventory(){
   const q=(document.getElementById('d-inv-search')?.value||document.getElementById('inv-search')?.value||'').toLowerCase().trim();
   const filtered=products.filter(p=>{
@@ -4649,21 +4699,52 @@ function _doRenderInventory(){
     if(v&&v.name.toLowerCase().includes(q))return true;
     return false;
   });
+
+  // 建立草稿進貨待進數量 map
+  _buildDraftIncoming();
+  const draftIncoming=_draftIncoming;
+  const draftIncomingByProduct={};
+  purchaseOrders.filter(po=>po.status==='draft').forEach(po=>{
+    po.items.forEach(item=>{
+      const sc=(item.skuCode||'').toUpperCase();
+      const name=item.productName||'';
+      const parts=(item.skuDesc||'').split('/');
+      const color=(parts[0]||'').trim();
+      const size=(parts[1]||'').trim();
+      const qty=item.qty||1;
+      if(sc){
+        const k=sc+'|'+(color||'')+'|'+(size||'');
+        draftIncoming[k]=(draftIncoming[k]||0)+qty;
+        draftIncomingByProduct[sc]=(draftIncomingByProduct[sc]||0)+qty;
+      }else if(name){
+        draftIncomingByProduct['name:'+name]=(draftIncomingByProduct['name:'+name]||0)+qty;
+      }
+    });
+  });
+
   const html=filtered.map(p=>{
     const ts=getPTotalStock(p);
     const margin=p.price>0?Math.round((p.price-p.cost)/p.price*100):0;
     const tag=ts===0?'<span class="tag tag-r">售完</span>':ts<=lowStockThreshold?'<span class="tag tag-y">低庫存</span>':'<span class="tag tag-g">正常</span>';
     const v=vendors.find(x=>Number(x.id)===Number(p.vendorId));
+    // 準備進貨數量
+    const sc=(p.skuCode||'').toUpperCase();
+    const incomingTotal=sc?draftIncomingByProduct[sc]:(draftIncomingByProduct['name:'+p.name]||0);
+    const incomingBadge=incomingTotal>0?`<span style="font-size:10px;background:rgba(88,166,255,.15);color:#3a8bd4;border:1px solid rgba(88,166,255,.3);border-radius:5px;padding:1px 6px;font-weight:700">📦 進貨中 +${incomingTotal}</span>`:'';
     const skuHtml=p.skus?.length?`<div class="sku-grid">${p.skus.filter(s=>s.stock>0||p.skus.length<=9).map(s=>{
       const cls=s.stock===0?'zero':s.stock<=3?'low':'ok';
-      return `<div class="sku-cell ${cls}"><div class="sku-cell-lbl">${s.color}/${s.size}</div><div class="sku-cell-stk">${s.stock}</div></div>`;
+      const skuSc=(p.skuCode||'').toUpperCase();
+      const incomingKey=skuSc+'|'+(s.color||'')+'|'+(s.size||'F');
+      const incomingQty=draftIncoming[incomingKey]||0;
+      const incomingStr=incomingQty>0?`<span style="font-size:9px;color:#3a8bd4;font-weight:700"> +${incomingQty}</span>`:'';
+      return `<div class="sku-cell ${cls}"><div class="sku-cell-lbl">${s.color}/${s.size}</div><div class="sku-cell-stk">${s.stock}${incomingStr}</div></div>`;
     }).join('')}</div>`:'';
     return `<div class="inv-card" onclick="openStockView(${p.id},event)" style="cursor:pointer;transition:border-color .15s" onmouseover="this.style.borderColor='var(--ac)'" onmouseout="this.style.borderColor='var(--bd)'">
       <div class="inv-card-hdr">
         <div class="inv-info">
           <div class="inv-name">${p.name}${p.skuCode?` <span style="font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--tx3)">[${p.skuCode}]</span>`:''} <span style="font-size:10px;color:var(--tx3);font-weight:400">${p.cat}</span></div>
           <div class="inv-meta">售 $${p.price}｜成本 $${p.cost}｜毛利 ${margin}%${v?'｜'+v.name:''}</div>
-          <div style="margin-top:4px;display:flex;gap:5px;flex-wrap:wrap;align-items:center">${tag}<span style="font-size:10px;color:var(--tx2)">總庫存：${ts}</span></div>
+          <div style="margin-top:4px;display:flex;gap:5px;flex-wrap:wrap;align-items:center">${tag}${incomingBadge}<span style="font-size:10px;color:var(--tx2)">總庫存：${ts}</span></div>
         </div>
         <div class="inv-actions" onclick="event.stopPropagation()">
           <button class="btn btn-ghost btn-sm" onclick="openEditProduct(${p.id})">編輯</button>
@@ -4693,6 +4774,7 @@ function openStockView(id,e){
   const now=Date.now();
   if(id===_lastStockViewId&&now-_lastStockViewTime<200)return;
   _lastStockViewId=id;_lastStockViewTime=now;
+  _buildDraftIncoming();
   const p=products.find(x=>Number(x.id)===id);if(!p)return;
   const v=vendors.find(x=>Number(x.id)===Number(p.vendorId));
   const ts=getPTotalStock(p);
@@ -4703,7 +4785,14 @@ function openStockView(id,e){
     <div style="margin-bottom:10px">${tag} <span style="font-size:11px;color:var(--tx2);margin-left:6px">總庫存 ${ts} 件</span></div>
     <div class="sec-label">庫存調整</div>
     ${p.skus?.length
-      ?`<div class="sku-stock-grid">${p.skus.map((s,i)=>`<div class="sku-stock-item"><div class="sku-stock-label">${s.color} / ${s.size}</div><input class="sku-stock-input" type="number" id="sv-si-${i}" value="${s.stock}" min="0"></div>`).join('')}</div>`
+      ?`<div class="sku-stock-grid">${p.skus.map((s,i)=>{
+        const sc=(p.skuCode||'').toUpperCase();
+        const incomingQty=(_draftIncoming[sc+'|'+(s.color||'')+'|'+(s.size||'F')])||0;
+        return `<div class="sku-stock-item" style="${incomingQty>0?'border-color:rgba(88,166,255,.4);background:rgba(88,166,255,.05)':''}">
+          <div class="sku-stock-label">${s.color} / ${s.size}</div>
+          <input class="sku-stock-input" type="number" id="sv-si-${i}" value="${s.stock}" min="0">
+          ${incomingQty>0?`<div style="font-size:10px;color:#3a8bd4;font-weight:700;text-align:center;margin-top:3px">進貨中 +${incomingQty}</div>`:''}
+        </div>`;}).join('')}</div>`
       :`<div style="display:flex;gap:8px;align-items:center;margin-bottom:6px"><label style="font-size:12px;color:var(--tx2);white-space:nowrap">總庫存</label><input class="sku-stock-input" type="number" id="sv-si-0" value="${p.stock||0}" min="0" style="width:120px"></div>`}
     <button class="btn btn-primary" style="width:100%;margin-top:10px" onclick="saveStockViewEdit(${id})">儲存庫存調整</button>`;
   document.getElementById('stock-view-edit-btn').onclick=()=>{closeModal('modal-stock-view');openEditProduct(id);};
@@ -4723,7 +4812,13 @@ function openSkuStockEditor(id){
   editingSkuProductId=id;
   document.getElementById('sku-stock-title').textContent=p.name+(p.skuCode?' ['+p.skuCode+']':'')+'  調整庫存';
   document.getElementById('sku-stock-content').innerHTML=p.skus?.length
-    ?`<div class="sku-stock-grid">${p.skus.map((s,i)=>`<div class="sku-stock-item"><div class="sku-stock-label">${s.color} / ${s.size}</div><input class="sku-stock-input" type="number" id="ssi-${i}" value="${s.stock}" min="0"></div>`).join('')}</div>`
+    ?`<div class="sku-stock-grid">${p.skus.map((s,i)=>{
+      const sc=(p.skuCode||'').toUpperCase();
+      const incomingKey=sc+'|'+(s.color||'')+'|'+(s.size||'F');
+      const incomingQty=_draftIncoming[incomingKey]||0;
+      const incomingHtml=incomingQty>0?`<div style="font-size:10px;color:#3a8bd4;font-weight:700;text-align:center;margin-top:2px">進貨中 +${incomingQty}</div>`:'';
+      return `<div class="sku-stock-item" style="${incomingQty>0?'border-color:rgba(88,166,255,.4);background:rgba(88,166,255,.05)':''}"><div class="sku-stock-label">${s.color} / ${s.size}</div><input class="sku-stock-input" type="number" id="ssi-${i}" value="${s.stock}" min="0">${incomingHtml}</div>`;
+    }).join('')}</div>`
     :`<div class="form-group"><label class="form-label">總庫存</label><input class="sku-stock-input" id="ssi-0" type="number" value="${p.stock||0}"></div>`;
   openModal('modal-sku-stock');
 }
@@ -5146,12 +5241,8 @@ function openOrderDetail(id,uid){
   const member=o.memberId?members.find(x=>x.id===o.memberId):null;
   const regularItems=(o.items||[]).filter(i=>!i.isPreorder);
   const preItems=(o.items||[]).filter(i=>i.isPreorder);
-  const renderItem=i=>`<div class="od-item"><span>${i.name}${i.color?' '+i.color:''}${i.size&&i.size!=='F'?' '+i.size:''} × ${i.qty}</span><span style="font-family:'JetBrains Mono',monospace">$${((i.price||0)*i.qty).toLocaleString()}</span></div>`;
+  const renderItem=i=>`<div class="od-item"><span>${i.skuCode?`<span style="font-size:10px;font-family:'JetBrains Mono',monospace;color:var(--tx3);margin-right:4px">${i.skuCode}</span>`:''}${i.name}${i.color?' '+i.color:''}${i.size&&i.size!=='F'?' '+i.size:''} × ${i.qty}</span><span style="font-family:'JetBrains Mono',monospace">$${((i.price||0)*i.qty).toLocaleString()}</span></div>`;
   document.getElementById('od-content').innerHTML=`
-    <div style="display:flex;align-items:center;gap:7px;flex-wrap:wrap;margin-bottom:5px">
-      <span style="font-size:11px;color:var(--tx3)">單號：</span>
-      <span style="font-family:'JetBrains Mono',monospace;font-size:13px;font-weight:700">${o.id}</span>
-    </div>
     <div style="font-size:13px;color:var(--tx2);margin-bottom:9px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
       <span>${o.date} ${o.time}</span>
       ${member?`｜ 👤 ${member.name}`:''}
@@ -5365,10 +5456,17 @@ function renderOrderEditForm(){
       </div>
       ${skuBtnsHtml?`<div style="display:flex;flex-wrap:wrap;gap:4px">${skuBtnsHtml}</div>`:''}
     </div>
-    <!-- 合計 -->
-    <div style="display:flex;justify-content:space-between;font-weight:700;font-size:13px;padding:8px 0;border-top:1px solid var(--bd)">
-      <span>合計</span>
-      <span style="font-family:'JetBrains Mono',monospace;color:var(--gn)">$${_editOrderItems.reduce((s,i)=>s+(i.price||0)*(i.qty||1),0).toLocaleString()}</span>
+    <!-- 合計（含折扣） -->
+    <div style="padding:8px 0;border-top:1px solid var(--bd)">
+      <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:4px"><span style="color:var(--tx2)">小計</span><span style="font-family:'JetBrains Mono',monospace">$${_editOrderItems.reduce((s,i)=>s+(i.price||0)*(i.qty||1),0).toLocaleString()}</span></div>
+      ${(()=>{const o2=_findEditingOrder();const rows=[];
+        if(o2?.autoDisc>0&&o2?.promoBreakdown?.length)o2.promoBreakdown.forEach(b=>rows.push(`<div style="display:flex;justify-content:space-between;font-size:11px;color:var(--gn)"><span>🏷️ ${b.label}</span><span>-$${b.disc.toLocaleString()}</span></div>`));
+        if(o2?.couponDisc>0)rows.push(`<div style="display:flex;justify-content:space-between;font-size:11px;color:var(--pu)"><span>🎟️ 折價券</span><span>-$${o2.couponDisc.toLocaleString()}</span></div>`);
+        if((o2?.pointsDisc||0)>0)rows.push(`<div style="display:flex;justify-content:space-between;font-size:11px;color:var(--ac)"><span>💰 購物金折抵</span><span>-$${o2.pointsDisc.toLocaleString()}</span></div>`);
+        if(o2?.manualDisc>0)rows.push(`<div style="display:flex;justify-content:space-between;font-size:11px;color:var(--yl)"><span>額外折扣</span><span>-$${o2.manualDisc.toLocaleString()}</span></div>`);
+        return rows.join('');
+      })()}
+      <div style="display:flex;justify-content:space-between;font-weight:700;font-size:15px;font-family:'JetBrains Mono',monospace;margin-top:4px"><span>合計</span><span style="color:var(--gn)">$${(()=>{const o2=_findEditingOrder();const sub=_editOrderItems.reduce((s,i)=>s+(i.price||0)*(i.qty||1),0);const disc=(o2?.autoDisc||0)+(o2?.couponDisc||0)+(o2?.pointsDisc||0)+(o2?.manualDisc||0);return Math.max(0,sub-disc).toLocaleString();})()}</span></div>
     </div>`;
   // Focus sku input
   setTimeout(()=>{if(!_oeSkuProduct){const e=document.getElementById('oe-sku-input');if(e)e.focus();}},50);
@@ -5510,6 +5608,7 @@ function updatePOCostSummary(){
   setEl(['po-cost-balance'],'$'+balance.toLocaleString());
 }
 
+let _poFilter='all'; // 'all' | 'done' | 'draft'
 function renderPOs(){
   // 統計
   const doneOrders=purchaseOrders.filter(p=>p.status==='done');
@@ -5518,24 +5617,31 @@ function renderPOs(){
   const totalDoneCost=doneOrders.reduce((s,po)=>s+po.items.reduce((ss,i)=>ss+(i.cost||0)*(i.qty||1),0)+(po.extraCost||0),0);
   const statsHtml=purchaseOrders.length?`
     <div style="display:flex;gap:10px;margin-bottom:10px;font-size:11px;flex-wrap:wrap">
-      <span style="background:rgba(63,185,80,.1);border:1px solid rgba(63,185,80,.2);border-radius:6px;padding:4px 10px;color:var(--gn)">
+      <button onclick="_poFilter=_poFilter==='done'?'all':'done';renderPOs()" style="background:${_poFilter==='done'?'rgba(63,185,80,.25)':'rgba(63,185,80,.1)'};border:1px solid rgba(63,185,80,.3);border-radius:6px;padding:4px 10px;color:var(--gn);cursor:pointer;font-size:11px;font-weight:${_poFilter==='done'?'800':'400'}">
         ✅ 已入庫 ${doneOrders.length} 筆 / ${totalDoneQty} 件 / $${totalDoneCost.toLocaleString()}
-      </span>
-      ${draftOrders.length?`<span style="background:rgba(212,112,42,.1);border:1px solid rgba(212,112,42,.2);border-radius:6px;padding:4px 10px;color:var(--or)">
+      </button>
+      ${draftOrders.length?`<button onclick="_poFilter=_poFilter==='draft'?'all':'draft';renderPOs()" style="background:${_poFilter==='draft'?'rgba(212,112,42,.25)':'rgba(212,112,42,.1)'};border:1px solid rgba(212,112,42,.3);border-radius:6px;padding:4px 10px;color:var(--or);cursor:pointer;font-size:11px;font-weight:${_poFilter==='draft'?'800':'400'}">
         📝 草稿 ${draftOrders.length} 筆
-      </span>`:''}
+      </button>`:''}
     </div>`:'';
   setEl(['po-stats','d-po-stats'],statsHtml,true);
 
-  const html=!purchaseOrders.length?'<div style="text-align:center;color:var(--tx3);padding:26px;font-size:12px">尚無採購記錄</div>'
-    :[...purchaseOrders].reverse().map(po=>{
+  // 依篩選條件過濾
+  let displayPOs=[...purchaseOrders].reverse();
+  if(_poFilter==='done')displayPOs=displayPOs.filter(p=>p.status==='done');
+  else if(_poFilter==='draft')displayPOs=displayPOs.filter(p=>p.status==='draft');
+
+  const html=(!displayPOs.length
+    ?'<div style="text-align:center;color:var(--tx3);padding:26px;font-size:12px">'+(purchaseOrders.length?'此分類無採購記錄':'尚無採購記錄')+'</div>'
+    :displayPOs.map(po=>{
+      // 使用 purchaseOrders 陣列中的真實 index，不依賴 id 或 _uid
+      const realIdx=purchaseOrders.indexOf(po);
       const v=vendors.find(x=>Number(x.id)===Number(po.vendorId));
       const totalQty=po.items.reduce((s,i)=>s+(i.qty||1),0);
       const itemCost=po.items.reduce((s,i)=>s+(i.cost||0)*(i.qty||1),0);
       const totalCost=itemCost+(po.extraCost||0);
       const prepaid=po.prepaid||0;
       const isDone=po.status==='done';
-      // 已入庫：只顯示摘要，點擊開明細
       const summary=isDone
         ?`<div style="font-size:11px;color:var(--tx2);margin-top:3px">
             共 <b>${totalQty}</b> 件 / <b>${po.items.length}</b> 項　點擊查看明細
@@ -5543,9 +5649,9 @@ function renderPOs(){
         :`<div style="font-size:11px;color:var(--tx2);margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">
             ${po.items.map(i=>(i.vendorSku?'['+i.vendorSku+'] ':'')+i.productName+(i.skuDesc?' '+i.skuDesc:'')+' ×'+(i.qty||1)).join('　')}
           </div>`;
-      return `<div class="po-card" onclick="openPODetail(${po.id})" style="position:relative">
+      return `<div class="po-card" onclick="openPOByIdx(${realIdx})" style="position:relative">
         <div class="po-header">
-          <div class="po-id">#${po.id}</div>
+          <div class="po-id" style="font-size:11px;color:var(--tx3);font-family:'JetBrains Mono',monospace">#${po.id}</div>
           <div class="po-info">
             <div class="po-name">${v?v.name:'未指定廠商'}</div>
             <div class="po-meta">${po.date||''}　${totalQty}件　$${totalCost.toLocaleString()}${prepaid?'　預付 $'+prepaid.toLocaleString():''}</div>
@@ -5553,40 +5659,103 @@ function renderPOs(){
           <div style="display:flex;align-items:center;gap:5px;flex-shrink:0">
             <span class="po-status ${po.status}">${isDone?'✅ 已入庫':'草稿'}</span>
             ${!isDone?`
-              <button onclick="event.stopPropagation();openPODetail(${po.id})"
+              <button onclick="event.stopPropagation();openPOByIdx(${realIdx})"
                 style="background:rgba(88,166,255,.1);border:1px solid rgba(88,166,255,.3);color:var(--ac);border-radius:6px;padding:3px 8px;cursor:pointer;font-size:11px;font-weight:600">編輯</button>`:''}
-            <button onclick="if(!confirm('確定要移除此品項？'))return;event.stopPropagation();deletePO(${po.id})"
+            <button onclick="if(!confirm('確定要刪除此採購單？'))return;event.stopPropagation();deletePOByIdx(${realIdx})"
               style="background:#fce8f0;border:1px solid #f0b8cc;color:var(--rd);border-radius:6px;padding:3px 8px;cursor:pointer;font-size:11px;font-weight:600">刪除</button>
           </div>
         </div>
         ${summary}
       </div>`;
-    }).join('');
+    }).join(''));
   setEl(['po-list','d-po-list'],html,true);
 }
 
-function deletePO(id){
-  const po=purchaseOrders.find(x=>x.id===id);
-  if(!po)return;
+function openPOByIdx(idx){
+  const po=purchaseOrders[idx];if(!po)return;
+  if(po.status==='draft'){
+    editingPOId=idx;
+    poItems=po.items.map(i=>({...i}));
+    quickSelectedSkus=[];
+    if(isDesktop){
+      dOpenPOModal();
+      // 填入草稿資料
+      setTimeout(()=>{
+        const sel=document.getElementById('d-po-vendor');
+        if(sel)sel.value=po.vendorId||'';
+        const dt=document.getElementById('d-po-date');if(dt)dt.value=po.date||'';
+        const nt=document.getElementById('d-po-note');if(nt)nt.value=po.note||'';
+        const ec=document.getElementById('d-po-extra-cost');if(ec)ec.value=po.extraCost||'0';
+        const pp=document.getElementById('d-po-prepaid');if(pp)pp.value=po.prepaid||'0';
+        const idInp=document.getElementById('d-po-id-input');
+        if(idInp)idInp.value=po.id||'';
+        dRenderPOItems();dUpdatePOCostSummary();
+      },50);
+      return;
+    }
+    // 手機版
+    document.getElementById('po-modal-title').textContent='編輯草稿 #'+po.id;
+    // 顯示單號輸入框
+    const poIdRow=document.getElementById('po-id-row');
+    if(poIdRow)poIdRow.style.display='';
+    const poIdInput=document.getElementById('po-id-input');
+    if(poIdInput)poIdInput.value=po.id||'';
+    document.getElementById('po-vendor').innerHTML='<option value="">（選擇廠商）</option>'+vendors.map(v=>`<option value="${v.id}"${Number(v.id)===Number(po.vendorId)?' selected':''}>${v.name}</option>`).join('');
+    document.getElementById('po-date').value=po.date||new Date().toISOString().split('T')[0];
+    document.getElementById('po-note').value=po.note||'';
+    document.getElementById('po-extra-cost').value=po.extraCost||'0';
+    document.getElementById('po-prepaid').value=po.prepaid||'0';
+    document.getElementById('po-draft-btn').style.display='';
+    document.getElementById('po-confirm-btn').style.display='';
+    document.querySelectorAll('#modal-po input,#modal-po select,#modal-po textarea').forEach(el=>el.disabled=false);
+    const qSection=document.getElementById('po-quick-section');if(qSection)qSection.style.display='';
+    clearPOQuick();renderPOItems();
+    openModal('modal-po');
+    return;
+  }
+  // 已入庫：開啟明細
+  const totalQty=po.items.reduce((s,i)=>s+(i.qty||1),0);
+  const totalCost=po.items.reduce((s,i)=>s+(i.cost||0)*(i.qty||1),0)+(po.extraCost||0);
+  const v=vendors.find(x=>Number(x.id)===Number(po.vendorId));
+  const rows=po.items.map(i=>`
+    <tr style="border-bottom:1px solid var(--bd)">
+      <td style="padding:5px 4px;font-size:11px;color:var(--tx2)">${i.vendorSku||'—'}</td>
+      <td style="padding:5px 4px;font-size:11px">${i.productName}</td>
+      <td style="padding:5px 4px;font-size:11px;color:var(--ac)">${i.skuDesc||'—'}</td>
+      <td style="padding:5px 4px;text-align:center;font-size:11px">${i.qty||1}</td>
+      <td style="padding:5px 4px;text-align:right;font-size:11px;font-family:'JetBrains Mono',monospace;color:var(--gn)">$${((i.cost||0)*(i.qty||1)).toLocaleString()}</td>
+    </tr>`).join('');
+  const overlay=document.getElementById('modal-po-done')||createPODoneModal();
+  overlay.querySelector('#pod-title').textContent=`#${po.id} ${v?v.name:''} ✅ 已入庫`;
+  overlay.querySelector('#pod-meta').textContent=`${po.date||''} ｜ ${totalQty} 件 ｜ 總成本 $${totalCost.toLocaleString()}`;
+  overlay.querySelector('#pod-rows').innerHTML=rows;
+  overlay.querySelector('#pod-total').textContent='$'+totalCost.toLocaleString();
+  overlay.style.display='flex';
+}
+
+function deletePOByIdx(idx){
+  const po=purchaseOrders[idx];if(!po)return;
   if(po.status==='done'){
     if(!confirm('此採購單已入庫，刪除後庫存將自動扣回，確定嗎？'))return;
-    // 還原庫存
     po.items.forEach(item=>{
       let p=item.skuCode?products.find(x=>x.skuCode&&x.skuCode.toUpperCase()===item.skuCode.toUpperCase()):null;
       if(!p&&item.productName)p=products.find(x=>x.name===item.productName);
       if(!p)return;
       let color='',size='';
       if(item.skuDesc){const parts=item.skuDesc.split(/[\/]+/);color=(parts[0]||'').trim();size=(parts[1]||'').trim();}
-      if(p.skus?.length&&color){
-        const sk=p.skus.find(s=>s.color===color&&(size?s.size===size:true));
-        if(sk)sk.stock=Math.max(0,sk.stock-(item.qty||1));
-      }else{p.stock=Math.max(0,(p.stock||0)-(item.qty||1));}
+      if(p.skus?.length&&color){const sk=p.skus.find(s=>s.color===color&&(size?s.size===size:true));if(sk)sk.stock=Math.max(0,sk.stock-(item.qty||1));}
+      else p.stock=Math.max(0,(p.stock||0)-(item.qty||1));
     });
+  }else{
+    if(!confirm('確定要刪除此草稿？'))return;
   }
-  purchaseOrders=purchaseOrders.filter(x=>x.id!==id);
+  purchaseOrders.splice(idx,1);
   save();renderPOs();renderInventory();renderDashboard();
   showNotif('已刪除採購單','var(--gn)');
 }
+
+function deletePO(uid){const po=purchaseOrders.find(x=>String(x._uid)===String(uid));if(po)deletePOByIdx(purchaseOrders.indexOf(po));}
+function openPODetail(uid){const po=purchaseOrders.find(x=>String(x._uid)===String(uid));if(po)openPOByIdx(purchaseOrders.indexOf(po));}
 
 function openNewPO(){
   if(isDesktop){editingPOId=null;poItems=[];dOpenPOModal();return;}
@@ -5594,6 +5763,7 @@ function openNewPO(){
   poItems=[];
   quickSelectedSkus=[];
   document.getElementById('po-modal-title').textContent='新增採購單';
+  const poIdRowN=document.getElementById('po-id-row');if(poIdRowN)poIdRowN.style.display='none';
   document.getElementById('po-vendor').innerHTML='<option value="">（選擇廠商）</option>'+vendors.map(v=>`<option value="${v.id}">${v.name}</option>`).join('');
   document.getElementById('po-date').value=new Date().toISOString().split('T')[0];
   document.getElementById('po-note').value='';
@@ -6027,11 +6197,16 @@ function savePO(status){
 
   const poData={vendorId,date,note,extraCost,prepaid,status,items:items.map(i=>({...i}))};
 
-  if(editingPOId){
-    const po=purchaseOrders.find(x=>x.id===editingPOId);
-    if(po)Object.assign(po,poData);
+  if(editingPOId!=null){
+    const po=typeof editingPOId==='number'&&editingPOId<purchaseOrders.length?purchaseOrders[editingPOId]:purchaseOrders.find(x=>String(x._uid)===String(editingPOId));
+    if(po){
+      Object.assign(po,poData);
+      // 若有修改單號則更新
+      const newId=(document.getElementById('po-id-input')?.value||'').trim();
+      if(newId&&newId!==String(po.id))po.id=newId;
+    }
   }else{
-    purchaseOrders.push({id:nextPoId++,...poData});
+    const _newPo={id:genPOId(),...poData};_newPo._uid=purchaseOrders.length;purchaseOrders.push(_newPo);
   }
 
   // 入庫：更新庫存（找不到商品則自動新增）
@@ -6082,53 +6257,6 @@ function savePO(status){
   renderPOs();renderInventory();renderDashboard();renderProducts();
 }
 
-function openPODetail(id){
-  const numId=parseInt(id);
-  const po=purchaseOrders.find(x=>x.id===numId);if(!po)return;
-  if(isDesktop&&po.status==='draft'){dOpenPODetailForEdit(numId);return;}
-  editingPOId=po.status==='draft'?numId:null;
-  poItems=po.items.map(i=>({...i}));
-  quickSelectedSkus=[];
-  const isDone=po.status==='done';
-
-  // 問題3：已入庫改用簡易明細 Modal
-  if(isDone){
-    const totalQty=po.items.reduce((s,i)=>s+(i.qty||1),0);
-    const totalCost=po.items.reduce((s,i)=>s+(i.cost||0)*(i.qty||1),0)+(po.extraCost||0);
-    const v=vendors.find(x=>Number(x.id)===Number(po.vendorId));
-    const rows=po.items.map(i=>`
-      <tr style="border-bottom:1px solid var(--bd)">
-        <td style="padding:5px 4px;font-size:11px;color:var(--tx2)">${i.vendorSku||'—'}</td>
-        <td style="padding:5px 4px;font-size:11px">${i.productName}</td>
-        <td style="padding:5px 4px;font-size:11px;color:var(--ac)">${i.skuDesc||'—'}</td>
-        <td style="padding:5px 4px;text-align:center;font-size:11px">${i.qty||1}</td>
-        <td style="padding:5px 4px;text-align:right;font-size:11px;font-family:'JetBrains Mono',monospace;color:var(--gn)">$${((i.cost||0)*(i.qty||1)).toLocaleString()}</td>
-      </tr>`).join('');
-    // 開啟自訂明細 Modal
-    const overlay=document.getElementById('modal-po-done')||createPODoneModal();
-    overlay.querySelector('#pod-title').textContent=`#${po.id} ${v?v.name:''} ✅ 已入庫`;
-    overlay.querySelector('#pod-meta').textContent=`${po.date||''} ｜ ${totalQty} 件 ｜ 總成本 $${totalCost.toLocaleString()}`;
-    overlay.querySelector('#pod-rows').innerHTML=rows;
-    overlay.querySelector('#pod-total').textContent='$'+totalCost.toLocaleString();
-    overlay.style.display='flex';
-    return;
-  }
-
-  document.getElementById('po-modal-title').textContent='採購單 #'+po.id+'（草稿）';
-  document.getElementById('po-vendor').innerHTML='<option value="">（選擇廠商）</option>'+vendors.map(v=>`<option value="${v.id}" ${v.id===po.vendorId?'selected':''}>${v.name}</option>`).join('');
-  document.getElementById('po-date').value=po.date||'';
-  document.getElementById('po-note').value=po.note||'';
-  document.getElementById('po-extra-cost').value=po.extraCost||0;
-  document.getElementById('po-prepaid').value=po.prepaid||0;
-  document.getElementById('po-draft-btn').style.display='';
-  document.getElementById('po-confirm-btn').style.display='';
-  document.querySelectorAll('#modal-po input,#modal-po select,#modal-po textarea').forEach(el=>el.disabled=false);
-  const qSection=document.getElementById('po-quick-section');
-  if(qSection)qSection.style.display='';
-  clearPOQuick();
-  renderPOItems();
-  openModal('modal-po');
-}
 
 function closePODoneModal(){
   const el=document.getElementById('modal-po-done');
@@ -7520,14 +7648,12 @@ const PREORDER_STATUS={
 };
 
 function genPreorderId(){
-  // 使用與銷售單共用的流水號，確保不重複
   const d=new Date();
   const ds=`${d.getFullYear()}${String(d.getMonth()+1).padStart(2,'0')}${String(d.getDate()).padStart(2,'0')}`;
-  if(!orderSeq[ds])orderSeq[ds]=1;
-  const seq=orderSeq[ds]++;
-  // 同步儲存流水號
+  if(!orderSeq['p_'+ds])orderSeq['p_'+ds]=1;
+  const seq=orderSeq['p_'+ds]++;
   try{localStorage.setItem(KEYS.orderSeq,JSON.stringify(orderSeq));}catch(e){}
-  return 'PO'+ds+String(seq).padStart(4,'0');
+  return 'P'+ds+String(seq).padStart(3,'0');
 }
 
 // ── 開啟新增 ──
@@ -7552,6 +7678,9 @@ function openAddPreorder(){
   if(itemsEl){itemsEl.dataset.quickSku='';itemsEl.dataset.quickName='';itemsEl.dataset.memberId='';}
   const discEl=document.getElementById('po-discount');if(discEl)discEl.value='';
   const balEl=document.getElementById('po-balance-display');if(balEl)balEl.textContent='—';
+  const mf=document.getElementById('po-manual-fields');if(mf)mf.style.display='none';
+  const cnEl=document.getElementById('po-cname');if(cnEl)cnEl.value='';
+  const cpEl=document.getElementById('po-cphone');if(cpEl)cpEl.value='';
   renderPreorderItemsForm();
   openModal('modal-preorder');
   setTimeout(()=>document.getElementById('po-cname').focus(),250);
@@ -7579,8 +7708,13 @@ function searchPreorderMember(){
 }
 function fillPreorderMember(id){
   const m=members.find(x=>x.id===id);if(!m)return;
-  document.getElementById('po-cname').value=m.name||'';
-  document.getElementById('po-cphone').value=m.phone||'';
+  // 顯示姓名電話欄並填入
+  const fields=document.getElementById('po-manual-fields');
+  if(fields)fields.style.display='block';
+  const nameEl=document.getElementById('po-cname');
+  const phoneEl=document.getElementById('po-cphone');
+  if(nameEl)nameEl.value=m.name||'';
+  if(phoneEl)phoneEl.value=m.phone||'';
   document.getElementById('po-member-search').value='';
   document.getElementById('po-member-results').innerHTML=
     `<div style="display:flex;align-items:center;gap:6px;padding:4px 0">
@@ -7588,16 +7722,17 @@ function fillPreorderMember(id){
       <button onmousedown="event.preventDefault()" onclick="clearPreorderMember()" style="font-size:10px;color:var(--rd);background:none;border:none;cursor:pointer;padding:0">✕ 解除</button>
     </div>`;
   const el=document.getElementById('po-items-form');
-  if(el){el.dataset.memberId=id;}
+  if(el)el.dataset.memberId=id;
   showNotif('✅ 已帶入會員：'+m.name,'var(--gn)');
 }
 function clearPreorderMember(){
   const el=document.getElementById('po-items-form');
   if(el)el.dataset.memberId='';
-  document.getElementById('po-cname').value='';
-  document.getElementById('po-cphone').value='';
+  const nameEl=document.getElementById('po-cname');if(nameEl)nameEl.value='';
+  const phoneEl=document.getElementById('po-cphone');if(phoneEl)phoneEl.value='';
   document.getElementById('po-member-results').innerHTML='';
   document.getElementById('po-member-search').value='';
+  const mf=document.getElementById('po-manual-fields');if(mf)mf.style.display='none';
 }
 
 function renderPreorderItemsForm(){
@@ -8006,7 +8141,7 @@ function openPreorderDetail(id){
       <div style="font-size:10px;color:var(--tx3);margin-bottom:7px">📦 訂購商品</div>
       ${po.items?.map(i=>`
         <div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid var(--bd);font-size:12px">
-          <span>${i.productName||i.name||''}${i.color?' <span style="color:var(--tx2)">'+i.color+'</span>':''}${i.size&&i.size!=='F'?' <span style="color:var(--tx2)">'+i.size+'</span>':''} ×${i.qty}</span>
+          <span>${i.skuCode?`<span style="font-size:10px;font-family:'JetBrains Mono',monospace;color:var(--tx3);margin-right:3px">${i.skuCode}</span>`:''}${i.productName||i.name||''}${i.color?' <span style="color:var(--tx2)">'+i.color+'</span>':''}${i.size&&i.size!=='F'?' <span style="color:var(--tx2)">'+i.size+'</span>':''} ×${i.qty}</span>
           <span style="font-family:'JetBrains Mono',monospace;color:var(--gn)">$${((i.price||0)*(i.qty||1)).toLocaleString()}</span>
         </div>`).join('')}
       <div style="display:flex;justify-content:space-between;font-size:12px;padding-top:6px;margin-top:2px"><span style="color:var(--tx2)">小計</span><span style="font-family:'JetBrains Mono',monospace">$${totalAmt.toLocaleString()}</span></div>
@@ -8040,8 +8175,11 @@ function openPreorderDetail(id){
   if(po.status!=='pickedup'&&po.status!=='cancelled')actions.push(
     `<button class="btn btn-ghost" style="color:var(--rd)" onclick="updatePreorderStatus('${po.id}','cancelled')">❌ 取消此預訂單</button>`
   );
-  actions.push(`<button class="btn btn-danger" onclick="deletePreorder('${po.id}')">🗑 刪除</button>`);
+  actions.push();// 刪除移至底部小按鈕
   document.getElementById('pod-actions').innerHTML=actions.join('');
+  // 設定刪除按鈕
+  const delBtn=document.getElementById('pod-delete-btn');
+  if(delBtn)delBtn.onclick=()=>deletePreorder(po.id);
   openModal('modal-preorder-detail');
 }
 
@@ -8316,27 +8454,28 @@ function renderAccounting(){
       <div class="stat-sub">${k.sub}</div>
     </div>`).join(''),true);
 
-  // 支出記帳列表
+  // 支出記帳列表（依日期區間篩選顯示）
+  const allExp=[...expenses].sort((a,b)=>(b.date||'').localeCompare(a.date||''));
+  const displayExp=[...filteredExp].sort((a,b)=>(b.date||'').localeCompare(a.date||''));
   const EXPENSE_CAT_COLOR={
     '租金':'var(--rd)','薪資':'var(--pu)','水電費':'var(--ac)','運費':'var(--gn)',
     '行銷廣告':'var(--or)','包材耗材':'var(--yl)','設備維修':'var(--tx2)',
     '餐費交通':'var(--gn)','其他':'var(--tx3)'
   };
-  // 依類別分組統計
+  // 依類別分組統計（全部支出）
   const catStats={};
-  filteredExp.forEach(e=>{catStats[e.category]=(catStats[e.category]||0)+(e.amount||0);});
-  const expHtml=!filteredExp.length
-    ?'<div style="color:var(--tx3);font-size:12px;padding:10px 0;text-align:center">此區間無支出記錄<br><span style="font-size:11px">點右上角「＋ 新增支出」開始記帳</span></div>'
+  displayExp.forEach(e=>{catStats[e.category]=(catStats[e.category]||0)+(e.amount||0);});
+  const totalAllExp=displayExp.reduce((s,e)=>s+(e.amount||0),0);
+  const expHtml=!displayExp.length
+    ?'<div style="color:var(--tx3);font-size:12px;padding:10px 0;text-align:center">尚無支出記錄<br><span style="font-size:11px">點右上角「＋ 新增支出」開始記帳</span></div>'
     :[
-      // 類別統計
       Object.keys(catStats).length>1?`<div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:10px">
         ${Object.entries(catStats).sort((a,b)=>b[1]-a[1]).map(([cat,amt])=>`
           <span style="padding:3px 9px;border-radius:6px;font-size:10px;font-weight:700;background:rgba(0,0,0,.15);border:1px solid ${EXPENSE_CAT_COLOR[cat]||'var(--bd)'};color:${EXPENSE_CAT_COLOR[cat]||'var(--tx2)'}">
             ${cat} $${amt.toLocaleString()}
           </span>`).join('')}
       </div>`:'',
-      // 明細列表
-      ...filteredExp.sort((a,b)=>b.date.localeCompare(a.date)).map(e=>`
+      ...displayExp.map(e=>`
         <div style="display:flex;align-items:center;gap:9px;padding:8px 0;border-bottom:1px solid var(--bd)">
           <div style="flex:1;min-width:0">
             <div style="display:flex;align-items:center;gap:6px;margin-bottom:2px">
@@ -8353,11 +8492,10 @@ function renderAccounting(){
         </div>`)
     ].join('');
   setEl([pfx+'acc-expense-list'],expHtml,true);
-  // 合計列
   const totalRow=document.getElementById(pfx+'acc-expense-total');
   const totalVal=document.getElementById(pfx+'acc-expense-total-val');
-  if(totalRow)totalRow.style.display=filteredExp.length?'flex':'none';
-  if(totalVal)totalVal.textContent='-$'+totalExpense.toLocaleString();
+  if(totalRow)totalRow.style.display=displayExp.length?'flex':'none';
+  if(totalVal)totalVal.textContent='-$'+totalAllExp.toLocaleString();
 
   // 營收與成本明細
   setEl([pfx+'acc-revenue-detail'],`
