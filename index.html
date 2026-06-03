@@ -17,12 +17,15 @@ let db = null;
 let _fbSyncEnabled = false;
 let _fbTimers = {}; // 每個 key 獨立 timer
 
+// 裝置唯一 ID（用於跨裝置同步識別）
+const _deviceId=(()=>{let id=localStorage.getItem('pm_device_id');if(!id){id=Math.random().toString(36).slice(2)+Date.now().toString(36);localStorage.setItem('pm_device_id',id);}return id;})();
+
 function fbSave(key, data) {
   if (!_fbSyncEnabled || !db) return;
   clearTimeout(_fbTimers[key]);
   _fbTimers[key] = setTimeout(() => {
     db.collection('posdata').doc(key)
-      .set({ value: JSON.stringify(data), updatedAt: Date.now() })
+      .set({ value: JSON.stringify(data), updatedAt: Date.now(), deviceId: _deviceId })
       .then(() => console.log('✅ 同步:', key))
       .catch(e => console.warn('Firebase 寫入失敗:', key, e));
   }, 800);
@@ -51,8 +54,8 @@ function fbListen() {
         const key = change.doc.id;
         const data = change.doc.data();
         if (!data.value) return;
-        // 自己 3 秒內寫的不重新套用（避免自己觸發自己）
-        if (data.updatedAt && Date.now() - data.updatedAt < 3000) return;
+        // 自己這台裝置寫的不重新套用（用 deviceId 判斷，比時間更準確）
+        if (data.deviceId && data.deviceId === _deviceId) return;
         try {
           const val = JSON.parse(data.value);
           applyRemoteData(key, val);
