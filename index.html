@@ -45,22 +45,20 @@ async function fbLoad() {
 
 function fbListen() {
   if (!db) return;
-  // 只監聽雲端變更並通知，不自動覆蓋本地資料
-  // （避免本地修改後雲端舊版本反蓋回來）
   db.collection('posdata').onSnapshot({ includeMetadataChanges: false }, snap => {
-    let hasRemoteChange = false;
     snap.docChanges().forEach(change => {
       if (change.type === 'modified' || change.type === 'added') {
+        const key = change.doc.id;
         const data = change.doc.data();
-        // 自己 3 秒內寫的不算外部變更
+        if (!data.value) return;
+        // 自己 3 秒內寫的不重新套用（避免自己觸發自己）
         if (data.updatedAt && Date.now() - data.updatedAt < 3000) return;
-        hasRemoteChange = true;
+        try {
+          const val = JSON.parse(data.value);
+          applyRemoteData(key, val);
+        } catch(e) { console.warn('fbListen 解析失敗:', key, e); }
       }
     });
-    // 只顯示提示，不自動覆蓋
-    if (hasRemoteChange) {
-      console.log('📥 雲端有更新，但不自動同步（需手動點「同步」才下載）');
-    }
   }, e => console.warn('Firebase 監聽失敗:', e));
 }
 
@@ -108,7 +106,7 @@ async function manualSync() {
     showNotif('⚠️ 未連線到雲端','var(--yl)');
     return;
   }
-  if(!confirm('⚠️ 確定要從雲端下載資料？\n\n這將會用雲端備份覆蓋目前本機的資料，\n本機未上傳的變更將會遺失。\n\n建議先點「上傳」備份後再同步。'))return;
+  if(!confirm('確定要從雲端強制下載資料？\n這將覆蓋目前本機的所有資料。'))return;
   showNotif('🔄 從雲端下載資料中...','var(--ac)');
   const data = await fbLoad();
   if (!data) { showNotif('❌ 同步失敗，請檢查網路','var(--rd)'); return; }
@@ -1819,8 +1817,9 @@ const KEYS={products:'pm_p',orders:'pm_o',nextId:'pm_nid',cats:'pm_c',promos:'pm
 // ============================================================
 function save(){
   try{
+    const ordersJson=JSON.stringify(orders);
     localStorage.setItem(KEYS.products,JSON.stringify(products));
-    localStorage.setItem(KEYS.orders,JSON.stringify(orders));
+    localStorage.setItem(KEYS.orders,ordersJson);
     localStorage.setItem(KEYS.nextId,String(nextId));
     localStorage.setItem(KEYS.cats,JSON.stringify(categories));
     localStorage.setItem(KEYS.promos,JSON.stringify(promos));
@@ -1839,9 +1838,31 @@ function save(){
     localStorage.setItem(KEYS.memberTiers,JSON.stringify(memberTiers));
     localStorage.setItem(KEYS.pointsSettings,JSON.stringify(pointsSettings));
     localStorage.setItem(KEYS.expenses,JSON.stringify(expenses));
-    // ⚠️ 不自動同步到雲端，避免本地修改蓋掉雲端備份
-    // 請手動點「上傳」按鈕將本地資料備份到雲端
-  }catch(e){console.warn(e)}
+    // 驗證寫入是否成功
+    const verify=localStorage.getItem(KEYS.orders);
+    if(!verify||verify.length<2){
+      console.error('❌ 銷售記錄寫入失敗！');
+      showNotif('⚠️ 儲存失敗！請立即點「上傳」備份資料','var(--rd)');
+    }
+    // 自動備份到雲端（只推送，不拉取，不會蓋掉本機）
+    if(typeof fbSave==='function'&&typeof _fbSyncEnabled!=='undefined'&&_fbSyncEnabled&&db){
+      fbSave('products',products);fbSave('orders',orders);
+      fbSave('members',members);fbSave('promos',promos);
+      fbSave('coupons',coupons);fbSave('vendors',vendors);
+      fbSave('purchaseOrders',purchaseOrders);fbSave('expenses',expenses);
+      fbSave('memberTiers',memberTiers);fbSave('pointsSettings',pointsSettings);
+      fbSave('payMethods',payMethods);fbSave('presetColors',presetColors);
+      fbSave('presetSizes',presetSizes);fbSave('preorders',preorders);
+      fbSave('categories',categories);fbSave('orderSeq',orderSeq);
+    }
+  }catch(e){
+    console.error('save() 失敗:',e);
+    if(e.name==='QuotaExceededError'){
+      showNotif('⚠️ 儲存空間不足！請清理舊資料或立即上傳備份','var(--rd)');
+    }else{
+      showNotif('⚠️ 資料儲存失敗：'+e.message,'var(--rd)');
+    }
+  }
 }
 function load(){
   try{
@@ -8625,7 +8646,8 @@ function closeModal(id){const el=document.getElementById(id);if(el){el.classList
 function openModal(id){const el=document.getElementById(id);if(el){el.classList.add('open');el.style.display='flex';}}
 document.querySelectorAll('.modal-overlay').forEach(m=>m.addEventListener('click',e=>{if(e.target===m){m.classList.remove('open');m.style.display='none';}}));
 function resetData(){
-  
+  if(!confirm('⚠️ 警告：確定要重置所有資料嗎？\n\n這將清除所有商品、銷售記錄、會員、預訂單等資料，且無法復原！\n\n請確認你已備份資料後再繼續。'))return;
+  if(!confirm('再次確認：真的要清除所有本機資料嗎？'))return;
   localStorage.clear();location.reload();
 }
 
